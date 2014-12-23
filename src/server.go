@@ -12,10 +12,11 @@ import (
 type MemcachedProtocolServer struct {
 	address  string
 	listener net.Listener
+	vdb      *KVBoltDBBackend
 }
 
-func NewMemcachedProtocolServer(address string) *MemcachedProtocolServer {
-	ms := MemcachedProtocolServer{address, nil}
+func NewMemcachedProtocolServer(address string, vdb *KVBoltDBBackend) *MemcachedProtocolServer {
+	ms := MemcachedProtocolServer{address, nil, vdb}
 	return &ms
 }
 
@@ -51,14 +52,8 @@ func (ms MemcachedProtocolServer) startsWith(line, cmd string) bool {
 }
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
-	//	reader := bufio.NewReader(conn)
 	scanner := bufio.NewScanner(conn)
 	for {
-		/*		line, err := reader.ReadBytes('\n')
-				if err != nil {
-					conn.Close()
-					break
-				} */
 		scanner.Scan()
 		line := scanner.Text()
 
@@ -66,10 +61,11 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			conn.Write([]byte("ERROR\r\n"))
 			continue
 		}
+		log.Printf("REQUEST: %s", line)
+		args := strings.Split(line, " ")
 
 		switch true {
-		case ms.startsWith(line, "get"):
-			args := strings.Split(line, " ")
+		case ms.startsWith(args[0], "get"):
 			for _, arg := range args[1:] {
 				if arg == " " || arg == "" {
 					break
@@ -80,9 +76,13 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				conn.Write([]byte("\r\n"))
 			}
 			conn.Write([]byte("END\r\n"))
-		case ms.startsWith(line, "set"):
-			args := strings.Split(line, " ")
-			fmt.Println(args)
+
+		case ms.startsWith(args[0], "set") || ms.startsWith(args[0], "replace"):
+			if len(args) < 2 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			}
+			// retrieve body
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
@@ -93,10 +93,4 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			}
 		}
 	}
-}
-
-func main() {
-	mc := NewMemcachedProtocolServer("127.0.0.1:11211")
-	defer mc.Close()
-	mc.Start()
 }

@@ -1,4 +1,4 @@
-package beano
+package main
 
 import (
 	"fmt"
@@ -198,7 +198,7 @@ func (be KVBoltDBBackend) Delete(key []byte) error {
 func (be KVBoltDBBackend) Flush() error {
 	be.db.Update(func(tx *bolt.Tx) error {
 		be.bloomFilter[be.bucketName].Reset()
-		return tx.Bucket([]byte(be.bucketName)).DeleteBucket("foo") // TODO: flush properly
+		return tx.Bucket([]byte(be.bucketName)).DeleteBucket([]byte("foo")) // TODO: flush properly
 	})
 	return nil
 }

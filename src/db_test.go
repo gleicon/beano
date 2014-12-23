@@ -1,4 +1,4 @@
-package beano
+package main
 
 import (
 	"fmt"
