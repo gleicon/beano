@@ -195,6 +195,14 @@ func (be KVBoltDBBackend) Delete(key []byte) error {
 	return nil
 }
 
+func (be KVBoltDBBackend) Flush() error {
+	be.db.Update(func(tx *bolt.Tx) error {
+		be.bloomFilter[be.bucketName].Reset()
+		return tx.Bucket([]byte(be.bucketName)).DeleteBucket("foo") // TODO: flush properly
+	})
+	return nil
+}
+
 func (be KVBoltDBBackend) Stats() error       { return nil }
 func (be KVBoltDBBackend) BucketStats() error { return nil }
 func (be KVBoltDBBackend) CloseDB() {
