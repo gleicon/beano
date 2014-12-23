@@ -52,8 +52,8 @@ func (ms MemcachedProtocolServer) startsWith(line, cmd string) bool {
 }
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
-	scanner := bufio.NewScanner(conn)
 	for {
+		scanner := bufio.NewScanner(conn)
 		scanner.Scan()
 		line := scanner.Text()
 
@@ -70,9 +70,13 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				if arg == " " || arg == "" {
 					break
 				}
-				responseMessage := "that's key:" + arg
-				conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(responseMessage))))
-				conn.Write([]byte(responseMessage))
+				v, err := ms.vdb.Get([]byte(arg))
+				if err != nil || v == nil {
+					conn.Write([]byte("ERROR\r\n"))
+					continue
+				}
+				conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(v))))
+				conn.Write(v)
 				conn.Write([]byte("\r\n"))
 			}
 			conn.Write([]byte("END\r\n"))
@@ -89,8 +93,16 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				conn.Write([]byte("ERROR\r\n"))
 				continue
 			} else {
+				ms.vdb.Set([]byte(args[1]), []byte(body))
 				conn.Write([]byte("STORED\r\n"))
 			}
+		case ms.startsWith(args[0], "quit"):
+			conn.Close()
+			return
+		default:
+			conn.Write([]byte("ERROR\r\n"))
+			continue
+
 		}
 	}
 }
