@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"time"
 )
 
 type MemcachedProtocolServer struct {
@@ -30,7 +29,6 @@ func (ms MemcachedProtocolServer) Start() {
 	if err == nil {
 		for {
 			if conn, err := ms.listener.Accept(); err == nil {
-				conn.SetDeadline(time.Now().Add(time.Duration(60) * time.Second))
 				go ms.handle(conn)
 			} else {
 				log.Print(err.Error())
@@ -66,6 +64,11 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		switch true {
 		case ms.startsWith(args[0], "get"):
+			if len(args) < 2 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			}
+
 			for _, arg := range args[1:] {
 				if arg == " " || arg == "" {
 					break
