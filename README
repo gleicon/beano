@@ -1,0 +1,4 @@
+# Beano
+    key/value database backed by BoltDB using memcached wire protocol
+    TODO: pass memcapable -a -v basic test
+
