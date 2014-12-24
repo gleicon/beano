@@ -75,17 +75,17 @@ func NewKVBoltDBBackend(filename string, bucketName string, maxKeysPerBucket int
 }
 
 func (be KVBoltDBBackend) Set(key []byte, value []byte) error {
-	return be.Put(key, value, true)
+	return be.Put(key, value, false, true)
 }
 
 // store data only if the server doesnt holds it yet
 func (be KVBoltDBBackend) Add(key []byte, value []byte) error {
-	return be.Put(key, value, true)
+	return be.Put(key, value, false, false)
 }
 
 // store data only if the server already holds this key
 func (be KVBoltDBBackend) Replace(key []byte, value []byte) error {
-	return be.Put(key, value, false)
+	return be.Put(key, value, true, false)
 }
 
 // INCR data, yields error if the represented value doesnt maps to int. Starts from 0, no negative values
@@ -137,20 +137,27 @@ func (be KVBoltDBBackend) Increment(key []byte, value int, create_if_not_exists 
 	return ret, err
 }
 
-func (be KVBoltDBBackend) Put(key []byte, value []byte, override bool) error {
+func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru bool) error {
 	err := be.db.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(be.bucketName))
 
 		if err != nil {
 			return err
 		}
-
-		// check if item exists at two levels, provided override is true
-		if override == false {
-			if be.bloomFilter[be.bucketName].Test(key) == false {
-				v := bucket.Get(key)
-				if v == nil {
-					return fmt.Errorf("Key %s do not exists, override set to false", string(key))
+		if passthru == false {
+			if replace == true {
+				if be.bloomFilter[be.bucketName].Test(key) == false {
+					v := bucket.Get(key)
+					if v == nil {
+						return fmt.Errorf("Key %s do not exists, replace set to true", string(key))
+					}
+				}
+			} else {
+				if be.bloomFilter[be.bucketName].Test(key) == true {
+					v := bucket.Get(key)
+					if v != nil {
+						return fmt.Errorf("Key %s exists, replace set to false", string(key))
+					}
 				}
 			}
 		}

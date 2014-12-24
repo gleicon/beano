@@ -119,6 +119,28 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 					conn.Write([]byte("STORED\r\n"))
 				}
 			}
+
+		case cmd == "add":
+			if len(args) < 2 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			}
+			// retrieve body
+			scanner.Scan()
+			body := scanner.Bytes()
+			if len(body) == 0 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			} else {
+				err := ms.vdb.Add([]byte(args[1]), []byte(body))
+				if err != nil {
+					log.Println(err)
+					conn.Write([]byte("NOT_STORED\r\n"))
+				} else {
+					conn.Write([]byte("STORED\r\n"))
+				}
+			}
+
 		case cmd == "quit":
 			if len(args) > 1 {
 				conn.Write([]byte("ERROR\r\n"))

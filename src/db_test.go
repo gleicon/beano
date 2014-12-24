@@ -82,7 +82,7 @@ func TestAdd(t *testing.T) {
 
 	vdb.Add(key, value)
 	err := vdb.Add(key, value)
-	if err != nil {
+	if err == nil {
 		t.Error(err)
 	}
 	vdb.Delete(key)
