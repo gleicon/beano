@@ -40,6 +40,7 @@ func (ms MemcachedProtocolServer) Start() {
 }
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
+	defer conn.Close()
 	for {
 		scanner := bufio.NewScanner(conn)
 		scanner.Scan()
