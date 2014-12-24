@@ -82,7 +82,7 @@ func TestAdd(t *testing.T) {
 
 	vdb.Add(key, value)
 	err := vdb.Add(key, value)
-	if err == nil {
+	if err != nil {
 		t.Error(err)
 	}
 	vdb.Delete(key)
@@ -145,4 +145,22 @@ func TestDecr(t *testing.T) {
 		t.Error(errUnexpected(string(v)))
 	}
 	vdb.Delete(key)
+}
+
+func TestFlush(t *testing.T) {
+	key := []byte("beano")
+	value := []byte("clapton")
+	vdb.Delete(key)
+	vdb.Set(key, value)
+	if v, err := vdb.Get(key); err != nil {
+		t.Error(err)
+	} else if v == nil {
+		t.Error(errUnexpected(v))
+	}
+	vdb.Flush()
+	if v, err := vdb.Get(key); err != nil {
+		t.Error(err)
+	} else if v != nil {
+		t.Error(errUnexpected(v))
+	}
 }
