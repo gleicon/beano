@@ -5,6 +5,7 @@ import (
 	"github.com/boltdb/bolt"
 	bloom "github.com/pmylund/go-bloom"
 	"strconv"
+	"sync"
 )
 
 /*
@@ -60,17 +61,31 @@ type KVBoltDBBackend struct {
 	expirationdb     *bolt.DB
 	bloomFilter      map[string]*bloom.CountingFilter
 	maxKeysPerBucket int
+	bloomLock        sync.RWMutex
 }
 
 func NewKVBoltDBBackend(filename string, bucketName string, maxKeysPerBucket int) *KVBoltDBBackend {
 	var err error
-	b := KVBoltDBBackend{filename, bucketName, nil, nil, nil, maxKeysPerBucket}
+	b := KVBoltDBBackend{filename: filename, bucketName: bucketName, db: nil, expirationdb: nil, bloomFilter: nil, maxKeysPerBucket: maxKeysPerBucket}
 	b.db, err = bolt.Open(filename, 0644, nil)
 	if err != nil {
 		return nil
 	}
 	b.bloomFilter = make(map[string]*bloom.CountingFilter)
 	b.bloomFilter[bucketName] = bloom.NewCounting(maxKeysPerBucket, 0.01)
+	err = b.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(b.bucketName))
+		if bucket == nil {
+			return fmt.Errorf("Bucket %q not found!", b.bucketName)
+		}
+		b.bloomLock.Lock()
+		bucket.ForEach(func(k, v []byte) error {
+			b.bloomFilter[bucketName].Add(k)
+			return nil
+		})
+		b.bloomLock.Unlock()
+		return nil
+	})
 	return &b
 }
 
@@ -108,7 +123,10 @@ func (be KVBoltDBBackend) Increment(key []byte, value int, create_if_not_exists 
 			return err
 		}
 
-		if be.bloomFilter[be.bucketName].Test(key) == false {
+		be.bloomLock.Lock()
+		bf := be.bloomFilter[be.bucketName].Test(key)
+		be.bloomLock.Unlock()
+		if bf == false {
 			if create_if_not_exists == false {
 				return fmt.Errorf("Increment: Key %s exists", string(key))
 			}
@@ -146,14 +164,20 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 		}
 		if passthru == false {
 			if replace == true {
-				if be.bloomFilter[be.bucketName].Test(key) == false {
+				be.bloomLock.Lock()
+				bf := be.bloomFilter[be.bucketName].Test(key)
+				be.bloomLock.Unlock()
+				if bf == false {
 					v := bucket.Get(key)
 					if v == nil {
 						return fmt.Errorf("Key %s do not exists, replace set to true", string(key))
 					}
 				}
 			} else {
-				if be.bloomFilter[be.bucketName].Test(key) == true {
+				be.bloomLock.Lock()
+				bf := be.bloomFilter[be.bucketName].Test(key)
+				be.bloomLock.Unlock()
+				if bf == true {
 					v := bucket.Get(key)
 					if v != nil {
 						return fmt.Errorf("Key %s exists, replace set to false", string(key))
@@ -162,7 +186,9 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 			}
 		}
 
+		be.bloomLock.Lock()
 		be.bloomFilter[be.bucketName].Add(key)
+		be.bloomLock.Unlock()
 		err = bucket.Put(key, value)
 		if err != nil {
 			return err
@@ -176,7 +202,10 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 
 func (be KVBoltDBBackend) Get(key []byte) ([]byte, error) {
 	var val []byte
-	if be.bloomFilter[be.bucketName].Test(key) == false {
+	be.bloomLock.Lock()
+	bf := be.bloomFilter[be.bucketName].Test(key)
+	be.bloomLock.Unlock()
+	if bf == false {
 		return nil, nil
 	}
 	err := be.db.View(func(tx *bolt.Tx) error {

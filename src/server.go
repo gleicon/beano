@@ -38,16 +38,6 @@ func (ms MemcachedProtocolServer) Start() {
 		log.Fatal(err.Error())
 	}
 }
-func (ms MemcachedProtocolServer) serverError(conn net.Conn, msg string) {
-	conn.Write([]byte(fmt.Sprintf("SERVER_ERROR %s\r\nEND\r\n", msg)))
-	log.Printf("Server error: %s", msg)
-}
-
-func (ms MemcachedProtocolServer) startsWith(line, cmd string) bool {
-	l := strings.HasPrefix(line, cmd)
-	u := strings.HasPrefix(line, strings.ToUpper(cmd))
-	return (l || u)
-}
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 	for {
@@ -63,7 +53,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		args := strings.Split(line, " ")
 		cmd := strings.ToLower(args[0])
 		switch true {
-		case cmd == "get": //ms.startsWith(args[0], "get"):
+		case cmd == "get":
 			if len(args) < 2 {
 				conn.Write([]byte("ERROR\r\n"))
 				continue
