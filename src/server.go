@@ -61,9 +61,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		}
 		log.Printf("REQUEST: %s", line)
 		args := strings.Split(line, " ")
-
+		cmd := strings.ToLower(args[0])
 		switch true {
-		case ms.startsWith(args[0], "get"):
+		case cmd == "get": //ms.startsWith(args[0], "get"):
 			if len(args) < 2 {
 				conn.Write([]byte("ERROR\r\n"))
 				continue
@@ -75,8 +75,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				}
 				v, err := ms.vdb.Get([]byte(arg))
 				if err != nil || v == nil {
-					conn.Write([]byte("ERROR\r\n"))
-					continue
+					break
 				}
 				conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(v))))
 				conn.Write(v)
@@ -84,7 +83,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			}
 			conn.Write([]byte("END\r\n"))
 
-		case ms.startsWith(args[0], "set") || ms.startsWith(args[0], "replace"):
+		case cmd == "set":
 			if len(args) < 2 {
 				conn.Write([]byte("ERROR\r\n"))
 				continue
@@ -99,10 +98,57 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				ms.vdb.Set([]byte(args[1]), []byte(body))
 				conn.Write([]byte("STORED\r\n"))
 			}
-		case ms.startsWith(args[0], "quit"):
-			conn.Close()
-			return
+
+		case cmd == "replace":
+			if len(args) < 2 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			}
+			// retrieve body
+			scanner.Scan()
+			body := scanner.Bytes()
+			if len(body) == 0 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			} else {
+				err := ms.vdb.Replace([]byte(args[1]), []byte(body))
+				if err != nil {
+					log.Println(err)
+					conn.Write([]byte("NOT_STORED\r\n"))
+				} else {
+					conn.Write([]byte("STORED\r\n"))
+				}
+			}
+		case cmd == "quit":
+			if len(args) > 1 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			} else {
+				conn.Close()
+				return
+			}
+
+		case cmd == "version":
+			if len(args) > 1 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			} else {
+				conn.Write([]byte("VERSION BEANO\r\n"))
+				continue
+			}
+
+		case cmd == "flush_all":
+			if len(args) > 1 {
+				conn.Write([]byte("ERROR\r\n"))
+				continue
+			} else {
+				ms.vdb.Flush()
+				conn.Write([]byte("OK\r\n"))
+				continue
+			}
+
 		default:
+			log.Printf("NOT IMPLEMENTED: %s\n", args[0])
 			conn.Write([]byte("ERROR\r\n"))
 			continue
 

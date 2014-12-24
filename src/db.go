@@ -80,12 +80,12 @@ func (be KVBoltDBBackend) Set(key []byte, value []byte) error {
 
 // store data only if the server doesnt holds it yet
 func (be KVBoltDBBackend) Add(key []byte, value []byte) error {
-	return be.Put(key, value, false)
+	return be.Put(key, value, true)
 }
 
 // store data only if the server already holds this key
 func (be KVBoltDBBackend) Replace(key []byte, value []byte) error {
-	return be.Put(key, value, true)
+	return be.Put(key, value, false)
 }
 
 // INCR data, yields error if the represented value doesnt maps to int. Starts from 0, no negative values
@@ -147,9 +147,10 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, override bool) error {
 
 		// check if item exists at two levels, provided override is true
 		if override == false {
-			if be.bloomFilter[be.bucketName].Test(key) == true {
-				if bucket.Get(key) != nil {
-					return fmt.Errorf("Key %s already exists, override set to false", string(key))
+			if be.bloomFilter[be.bucketName].Test(key) == false {
+				v := bucket.Get(key)
+				if v == nil {
+					return fmt.Errorf("Key %s do not exists, override set to false", string(key))
 				}
 			}
 		}
@@ -159,6 +160,7 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, override bool) error {
 		if err != nil {
 			return err
 		}
+
 		return nil
 	})
 
@@ -198,7 +200,7 @@ func (be KVBoltDBBackend) Delete(key []byte) error {
 func (be KVBoltDBBackend) Flush() error {
 	be.db.Update(func(tx *bolt.Tx) error {
 		be.bloomFilter[be.bucketName].Reset()
-		return tx.Bucket([]byte(be.bucketName)).DeleteBucket([]byte("foo")) // TODO: flush properly
+		return tx.DeleteBucket([]byte(be.bucketName))
 	})
 	return nil
 }
