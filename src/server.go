@@ -38,10 +38,19 @@ func (ms MemcachedProtocolServer) Start() {
 		log.Fatal(err.Error())
 	}
 }
+func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool) {
+	if noreply == true {
+		//conn.Write([]byte("\r\n"))
+		return
+	}
+	m := fmt.Sprintf("%s\r\n", msg)
+	conn.Write([]byte(m))
+}
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 	defer conn.Close()
 	for {
+		noreply := false
 		scanner := bufio.NewScanner(conn)
 		scanner.Scan()
 		line := scanner.Text()
@@ -53,88 +62,102 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		log.Printf("REQUEST: %s", line)
 		args := strings.Split(line, " ")
 		cmd := strings.ToLower(args[0])
+
+		/*	if args[len(args)-1] == "noreply" {
+				noreply = true
+			} else {
+				noreply = false
+			}
+		*/
 		switch true {
 		case cmd == "get":
 			if len(args) < 2 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			}
-
 			for _, arg := range args[1:] {
 				if arg == " " || arg == "" {
 					break
 				}
 				v, err := ms.vdb.Get([]byte(arg))
-				if err != nil || v == nil {
+				if v == nil {
+					continue
+				}
+				if err != nil {
 					break
 				}
-				conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(v))))
-				conn.Write(v)
-				conn.Write([]byte("\r\n"))
+				log.Println("alo brasil")
+				if noreply == false {
+					log.Println("alo brasil2")
+					conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(v))))
+					conn.Write(v)
+					conn.Write([]byte("\r\n"))
+				}
 			}
-			conn.Write([]byte("END\r\n"))
+			ms.sendMessage(conn, "END", noreply)
 
 		case cmd == "set":
 			if len(args) < 2 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			}
 			// retrieve body
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			} else {
 				ms.vdb.Set([]byte(args[1]), []byte(body))
-				conn.Write([]byte("STORED\r\n"))
+				ms.sendMessage(conn, "STORED", noreply)
 			}
 
 		case cmd == "replace":
 			if len(args) < 2 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			}
 			// retrieve body
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "STORED", noreply)
 				continue
 			} else {
 				err := ms.vdb.Replace([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Println(err)
-					conn.Write([]byte("NOT_STORED\r\n"))
+					ms.sendMessage(conn, "NOT_STORED", noreply)
 				} else {
-					conn.Write([]byte("STORED\r\n"))
+					ms.sendMessage(conn, "STORED", noreply)
 				}
 			}
 
 		case cmd == "add":
 			if len(args) < 2 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			}
+
 			// retrieve body
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			} else {
 				err := ms.vdb.Add([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Println(err)
-					conn.Write([]byte("NOT_STORED\r\n"))
+					ms.sendMessage(conn, "NOT_STORED", noreply)
 				} else {
-					conn.Write([]byte("STORED\r\n"))
+					ms.sendMessage(conn, "STORED", noreply)
 				}
 			}
 
 		case cmd == "quit":
 			if len(args) > 1 {
-				conn.Write([]byte("ERROR\r\n"))
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			} else {
 				conn.Close()
@@ -143,26 +166,50 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		case cmd == "version":
 			if len(args) > 1 {
-				conn.Write([]byte("ERROR\r\n"))
-				continue
+				ms.sendMessage(conn, "ERROR", false)
 			} else {
-				conn.Write([]byte("VERSION BEANO\r\n"))
-				continue
+				ms.sendMessage(conn, "VERSION BEANO", false)
 			}
+			continue
 
 		case cmd == "flush_all":
 			if len(args) > 1 {
-				conn.Write([]byte("ERROR\r\n"))
-				continue
+				ms.sendMessage(conn, "ERROR", noreply)
 			} else {
 				ms.vdb.Flush()
-				conn.Write([]byte("OK\r\n"))
+				ms.sendMessage(conn, "OK", noreply)
+			}
+			continue
+
+		case cmd == "verbosity":
+			if len(args) < 2 {
+				ms.sendMessage(conn, "ERROR", noreply)
+			} else {
+				ms.sendMessage(conn, "OK", noreply)
+			}
+			continue
+
+		case cmd == "delete":
+			if len(args) < 2 {
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
+			}
+			if len(args) > 3 {
+				ms.sendMessage(conn, "ERROR", noreply)
+				continue
+			}
+			deleted, err := ms.vdb.Delete([]byte(args[1]), true)
+			if err != nil {
+				log.Println(err)
+			} else if deleted == true {
+				ms.sendMessage(conn, "DELETED", noreply)
+			} else if deleted == false {
+				ms.sendMessage(conn, "NOT_FOUND", noreply)
 			}
 
 		default:
 			log.Printf("NOT IMPLEMENTED: %s\n", args[0])
-			conn.Write([]byte("ERROR\r\n"))
+			ms.sendMessage(conn, "ERROR", noreply)
 			continue
 
 		}

@@ -225,12 +225,22 @@ func (be KVBoltDBBackend) Get(key []byte) ([]byte, error) {
 
 }
 
-func (be KVBoltDBBackend) Delete(key []byte) error {
-	be.db.Update(func(tx *bolt.Tx) error {
+// returns deleted, error
+func (be KVBoltDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) {
+	if only_if_exists == true {
+		x, err := be.Get(key)
+		if err != nil {
+			return false, err
+		}
+		if x == nil {
+			return false, nil
+		}
+	}
+	err := be.db.Update(func(tx *bolt.Tx) error {
 		be.bloomFilter[be.bucketName].Remove(key)
 		return tx.Bucket([]byte(be.bucketName)).Delete(key)
 	})
-	return nil
+	return true, err
 }
 
 func (be KVBoltDBBackend) Flush() error {
