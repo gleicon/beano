@@ -42,6 +42,7 @@ func (ms MemcachedProtocolServer) Start() {
 }
 func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool) {
 	if noreply == true {
+		log.Printf("NOREPLY RESPONSE: %s\n", msg)
 		return
 	}
 	m := fmt.Sprintf("%s\r\n", msg)
@@ -51,6 +52,7 @@ func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 	defer conn.Close()
+Loop:
 	for {
 		noreply := false
 		scanner := bufio.NewScanner(conn)
@@ -61,6 +63,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			conn.Write([]byte("ERROR\r\n"))
 			continue
 		}
+
 		log.Printf("REQUEST: %s", line)
 		args := strings.Split(line, " ")
 		cmd := strings.ToLower(args[0])
@@ -71,11 +74,11 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		} else {
 			noreply = false
 		}
-		log.Printf("NOREPLY: %b\n", noreply)
+		log.Printf("NOREPLY STATUS: %b\n", noreply)
 		switch true {
 		case cmd == "get":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 				continue
 			}
 			for _, arg := range args[1:] {
@@ -99,14 +102,14 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		case cmd == "set":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 				continue
 			}
 			// retrieve body
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 			} else {
 				ms.vdb.Set([]byte(args[1]), []byte(body))
 				ms.sendMessage(conn, "STORED", noreply)
@@ -115,14 +118,14 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		case cmd == "replace":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 				continue
 			}
 			// retrieve body
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
-				ms.sendMessage(conn, "STORED", noreply)
+				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			} else {
 				err := ms.vdb.Replace([]byte(args[1]), []byte(body))
@@ -136,7 +139,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		case cmd == "add":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 				continue
 			}
 
@@ -144,7 +147,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			scanner.Scan()
 			body := scanner.Bytes()
 			if len(body) == 0 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 				continue
 			} else {
 				err := ms.vdb.Add([]byte(args[1]), []byte(body))
@@ -174,17 +177,13 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			continue
 
 		case cmd == "flush_all":
-			if len(args) > 1 {
-				ms.sendMessage(conn, "ERROR", noreply)
-			} else {
-				ms.vdb.Flush()
-				ms.sendMessage(conn, "OK", noreply)
-			}
-			continue
+			ms.vdb.Flush()
+			ms.sendMessage(conn, "OK", noreply)
+			break Loop
 
 		case cmd == "verbosity":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 			} else {
 				ms.sendMessage(conn, "OK", noreply)
 			}
@@ -213,7 +212,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		default:
 			log.Printf("NOT IMPLEMENTED: %s\n", args[0])
-			ms.sendMessage(conn, "ERROR", noreply)
+			ms.sendMessage(conn, "ERROR", false)
 			continue
 
 		}
