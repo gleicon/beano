@@ -40,7 +40,6 @@ func (ms MemcachedProtocolServer) Start() {
 }
 func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool) {
 	if noreply == true {
-		//conn.Write([]byte("\r\n"))
 		return
 	}
 	m := fmt.Sprintf("%s\r\n", msg)
@@ -52,6 +51,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 	for {
 		noreply := false
 		scanner := bufio.NewScanner(conn)
+		log.Println("NewScanner")
 		scanner.Scan()
 		line := scanner.Text()
 
@@ -62,12 +62,13 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		log.Printf("REQUEST: %s", line)
 		args := strings.Split(line, " ")
 		cmd := strings.ToLower(args[0])
-
-		/*	if args[len(args)-1] == "noreply" {
-				noreply = true
-			} else {
-				noreply = false
-			}
+		log.Println(args)
+		/*
+		       if args[len(args)-1] == "noreply" {
+		   			noreply = true
+		   		} else {
+		   			noreply = false
+		   		}
 		*/
 		switch true {
 		case cmd == "get":
@@ -86,9 +87,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				if err != nil {
 					break
 				}
-				log.Println("alo brasil")
 				if noreply == false {
-					log.Println("alo brasil2")
 					conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(v))))
 					conn.Write(v)
 					conn.Write([]byte("\r\n"))
@@ -168,7 +167,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			if len(args) > 1 {
 				ms.sendMessage(conn, "ERROR", false)
 			} else {
-				ms.sendMessage(conn, "VERSION BEANO", false)
+				ms.sendMessage(conn, "VERSION BEANO", noreply)
 			}
 			continue
 
@@ -206,6 +205,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			} else if deleted == false {
 				ms.sendMessage(conn, "NOT_FOUND", noreply)
 			}
+			continue
 
 		default:
 			log.Printf("NOT IMPLEMENTED: %s\n", args[0])
