@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 type MemcachedProtocolServer struct {
@@ -29,6 +30,7 @@ func (ms MemcachedProtocolServer) Start() {
 	if err == nil {
 		for {
 			if conn, err := ms.listener.Accept(); err == nil {
+				conn.SetDeadline(time.Now().Add(time.Duration(10) * time.Second))
 				go ms.handle(conn)
 			} else {
 				log.Print(err.Error())
@@ -44,6 +46,7 @@ func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply
 	}
 	m := fmt.Sprintf("%s\r\n", msg)
 	conn.Write([]byte(m))
+	log.Printf("RESPONSE: %s\n", m)
 }
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
@@ -51,7 +54,6 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 	for {
 		noreply := false
 		scanner := bufio.NewScanner(conn)
-		log.Println("NewScanner")
 		scanner.Scan()
 		line := scanner.Text()
 
@@ -63,13 +65,13 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		args := strings.Split(line, " ")
 		cmd := strings.ToLower(args[0])
 		log.Println(args)
-		/*
-		       if args[len(args)-1] == "noreply" {
-		   			noreply = true
-		   		} else {
-		   			noreply = false
-		   		}
-		*/
+
+		if args[len(args)-1] == "noreply" {
+			noreply = true
+		} else {
+			noreply = false
+		}
+		log.Printf("NOREPLY: %b\n", noreply)
 		switch true {
 		case cmd == "get":
 			if len(args) < 2 {
@@ -105,11 +107,11 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			body := scanner.Bytes()
 			if len(body) == 0 {
 				ms.sendMessage(conn, "ERROR", noreply)
-				continue
 			} else {
 				ms.vdb.Set([]byte(args[1]), []byte(body))
 				ms.sendMessage(conn, "STORED", noreply)
 			}
+			continue
 
 		case cmd == "replace":
 			if len(args) < 2 {
@@ -156,7 +158,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 
 		case cmd == "quit":
 			if len(args) > 1 {
-				ms.sendMessage(conn, "ERROR", noreply)
+				ms.sendMessage(conn, "ERROR", false)
 				continue
 			} else {
 				conn.Close()
@@ -167,7 +169,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			if len(args) > 1 {
 				ms.sendMessage(conn, "ERROR", false)
 			} else {
-				ms.sendMessage(conn, "VERSION BEANO", noreply)
+				ms.sendMessage(conn, "VERSION BEANO", false)
 			}
 			continue
 
@@ -197,10 +199,12 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				ms.sendMessage(conn, "ERROR", noreply)
 				continue
 			}
+
 			deleted, err := ms.vdb.Delete([]byte(args[1]), true)
 			if err != nil {
 				log.Println(err)
-			} else if deleted == true {
+			}
+			if deleted == true {
 				ms.sendMessage(conn, "DELETED", noreply)
 			} else if deleted == false {
 				ms.sendMessage(conn, "NOT_FOUND", noreply)
