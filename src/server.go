@@ -46,7 +46,7 @@ func (ms MemcachedProtocolServer) Start() {
 }
 func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool, id int) {
 	if noreply == true {
-		log.Printf("%d NOREPLY RESPONSE: %s\n", id, msg)
+		log.Printf("%d NOREPLY RESPONSE: %s", id, msg)
 		return
 	}
 	m := fmt.Sprintf("%s\r\n", msg)
