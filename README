@@ -1,4 +1,5 @@
 # Beano
-    key/value database backed by BoltDB using memcached wire protocol
-    TODO: pass memcapable -a -v basic test
+    key/value database backed by BoltDB using memcached wire protocol and a Counting Bloom Filter (or native map) as key cache.
 
+    TODO: pass memcapable -a -v basic test
+    TODO: use mc-benchmark and fix contention (http://oldblog.antirez.com/post/redis-memcached-benchmark.html)
