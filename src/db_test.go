@@ -34,32 +34,32 @@ func TestDelete(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
 	vdb.Set(key, value)
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 	if v, err := vdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v != nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestSet(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 	vdb.Set(key, value)
 	if v, err := vdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v == nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestGet(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 	if v, err := vdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v != nil {
@@ -72,27 +72,27 @@ func TestGet(t *testing.T) {
 	} else if v == nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestAdd(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 
 	vdb.Add(key, value)
 	err := vdb.Add(key, value)
 	if err == nil {
 		t.Error(err)
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestReplace(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
 	newvalue := []byte("eric")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 
 	vdb.Add(key, value)
 	vdb.Replace(key, newvalue)
@@ -101,13 +101,13 @@ func TestReplace(t *testing.T) {
 	} else if string(v) != "eric" {
 		t.Error(errUnexpected(string(v)))
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestIncr(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("10")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 
 	vdb.Set(key, value)
 	v, err := vdb.Incr(key, 1)
@@ -122,13 +122,13 @@ func TestIncr(t *testing.T) {
 	} else if string(v) != "11" {
 		t.Error(errUnexpected(string(v)))
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestDecr(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("10")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 
 	vdb.Set(key, value)
 	v, err := vdb.Decr(key, 1)
@@ -144,13 +144,13 @@ func TestDecr(t *testing.T) {
 	} else if string(v) != "9" {
 		t.Error(errUnexpected(string(v)))
 	}
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 }
 
 func TestFlush(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key)
+	vdb.Delete(key, false)
 	vdb.Set(key, value)
 	if v, err := vdb.Get(key); err != nil {
 		t.Error(err)

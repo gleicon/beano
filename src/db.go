@@ -46,6 +46,74 @@ Arbitrary data
 
 */
 
+type KeyCacheInterface interface {
+	Add([]byte)
+	Test([]byte) bool
+	Remove([]byte)
+	Reset()
+}
+
+type MemcachedKeys struct {
+	cache map[string]bool
+}
+
+func NewMemcachedKeys() *MemcachedKeys {
+	me := MemcachedKeys{cache: nil}
+	me.cache = make(map[string]bool)
+	return &me
+}
+
+func (me MemcachedKeys) Add(key []byte) {
+	k := string(key)
+	me.cache[k] = true
+}
+
+func (me MemcachedKeys) Test(key []byte) bool {
+	k := string(key)
+	_, err := me.cache[k]
+	if err {
+		return true
+	} else {
+		return false
+	}
+}
+
+type BloomFilterKeys struct {
+	cache     *bloom.CountingFilter
+	bloomLock sync.RWMutex
+}
+
+func NewBloomFilterKeys(maxKeysPerBucket int) *BloomFilterKeys {
+	me := BloomFilterKeys{cache: nil}
+	me.cache = bloom.NewCounting(maxKeysPerBucket, 0.01)
+	return &me
+}
+
+func (bf BloomFilterKeys) Add(key []byte) {
+	bf.bloomLock.Lock()
+	bf.cache.Add(key)
+	bf.bloomLock.Unlock()
+}
+
+func (bf BloomFilterKeys) Remove(key []byte) {
+	bf.bloomLock.Lock()
+	bf.cache.Remove(key)
+	bf.bloomLock.Unlock()
+}
+
+func (bf BloomFilterKeys) Reset() {
+	bf.bloomLock.Lock()
+	bf.cache.Reset()
+	bf.bloomLock.Unlock()
+}
+
+func (bf BloomFilterKeys) Test(key []byte) bool {
+	bf.bloomLock.RLock()
+	r := bf.cache.Test(key)
+	bf.bloomLock.RUnlock()
+	return r
+}
+
 type InternalValue struct {
 	key        []byte
 	flags      int32
@@ -59,31 +127,31 @@ type KVBoltDBBackend struct {
 	bucketName       string
 	db               *bolt.DB
 	expirationdb     *bolt.DB
-	bloomFilter      map[string]*bloom.CountingFilter
+	keyCache         map[string]*BloomFilterKeys //KeyCacheInterface
 	maxKeysPerBucket int
-	bloomLock        sync.RWMutex
 }
 
 func NewKVBoltDBBackend(filename string, bucketName string, maxKeysPerBucket int) *KVBoltDBBackend {
 	var err error
-	b := KVBoltDBBackend{filename: filename, bucketName: bucketName, db: nil, expirationdb: nil, bloomFilter: nil, maxKeysPerBucket: maxKeysPerBucket}
+	b := KVBoltDBBackend{filename: filename, bucketName: bucketName, db: nil, expirationdb: nil, keyCache: nil, maxKeysPerBucket: maxKeysPerBucket}
 	b.db, err = bolt.Open(filename, 0644, nil)
 	if err != nil {
 		return nil
 	}
-	b.bloomFilter = make(map[string]*bloom.CountingFilter)
-	b.bloomFilter[bucketName] = bloom.NewCounting(maxKeysPerBucket, 0.01)
+
+	b.keyCache = make(map[string]*BloomFilterKeys)
+	b.keyCache[bucketName] = NewBloomFilterKeys(maxKeysPerBucket)
+	//b.keyCache[bucketName] = NewMemcachedKeys()
+
 	err = b.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(b.bucketName))
 		if bucket == nil {
 			return fmt.Errorf("Bucket %q not found!", b.bucketName)
 		}
-		b.bloomLock.Lock()
 		bucket.ForEach(func(k, v []byte) error {
-			b.bloomFilter[bucketName].Add(k)
+			b.keyCache[bucketName].Add(k)
 			return nil
 		})
-		b.bloomLock.Unlock()
 		return nil
 	})
 	return &b
@@ -123,9 +191,7 @@ func (be KVBoltDBBackend) Increment(key []byte, value int, create_if_not_exists 
 			return err
 		}
 
-		be.bloomLock.Lock()
-		bf := be.bloomFilter[be.bucketName].Test(key)
-		be.bloomLock.Unlock()
+		bf := be.keyCache[be.bucketName].Test(key)
 		if bf == false {
 			if create_if_not_exists == false {
 				return fmt.Errorf("Increment: Key %s exists", string(key))
@@ -164,9 +230,7 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 		}
 		if passthru == false {
 			if replace == true {
-				be.bloomLock.Lock()
-				bf := be.bloomFilter[be.bucketName].Test(key)
-				be.bloomLock.Unlock()
+				bf := be.keyCache[be.bucketName].Test(key)
 				if bf == false {
 					v := bucket.Get(key)
 					if v == nil {
@@ -174,9 +238,7 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 					}
 				}
 			} else {
-				be.bloomLock.Lock()
-				bf := be.bloomFilter[be.bucketName].Test(key)
-				be.bloomLock.Unlock()
+				bf := be.keyCache[be.bucketName].Test(key)
 				if bf == true {
 					v := bucket.Get(key)
 					if v != nil {
@@ -186,9 +248,7 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 			}
 		}
 
-		be.bloomLock.Lock()
-		be.bloomFilter[be.bucketName].Add(key)
-		be.bloomLock.Unlock()
+		be.keyCache[be.bucketName].Add(key)
 		err = bucket.Put(key, value)
 		if err != nil {
 			return err
@@ -202,9 +262,7 @@ func (be KVBoltDBBackend) Put(key []byte, value []byte, replace bool, passthru b
 
 func (be KVBoltDBBackend) Get(key []byte) ([]byte, error) {
 	var val []byte
-	be.bloomLock.Lock()
-	bf := be.bloomFilter[be.bucketName].Test(key)
-	be.bloomLock.Unlock()
+	bf := be.keyCache[be.bucketName].Test(key)
 	if bf == false {
 		return nil, nil
 	}
@@ -237,7 +295,7 @@ func (be KVBoltDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) 
 		}
 	}
 	err := be.db.Update(func(tx *bolt.Tx) error {
-		be.bloomFilter[be.bucketName].Remove(key)
+		be.keyCache[be.bucketName].Remove(key)
 		return tx.Bucket([]byte(be.bucketName)).Delete(key)
 	})
 	return true, err
@@ -245,7 +303,7 @@ func (be KVBoltDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) 
 
 func (be KVBoltDBBackend) Flush() error {
 	be.db.Update(func(tx *bolt.Tx) error {
-		be.bloomFilter[be.bucketName].Reset()
+		be.keyCache[be.bucketName].Reset()
 		return tx.DeleteBucket([]byte(be.bucketName))
 	})
 	return nil
@@ -258,8 +316,9 @@ func (be KVBoltDBBackend) CloseDB() {
 }
 
 func (be KVBoltDBBackend) SwitchBucket(bucket string) {
-	if be.bloomFilter[bucket] == nil {
-		be.bloomFilter[bucket] = bloom.NewCounting(be.maxKeysPerBucket, 0.01)
+	if be.keyCache[bucket] == nil {
+		//be.keyCache[bucket] = NewMemcachedKeys()
+		be.keyCache[bucket] = NewBloomFilterKeys(be.maxKeysPerBucket)
 	}
 	be.bucketName = bucket
 }
