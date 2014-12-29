@@ -33,7 +33,6 @@ func (ms MemcachedProtocolServer) Start() {
 	if err == nil {
 		for {
 			if conn, err := ms.listener.Accept(); err == nil {
-				conn.SetDeadline(time.Now().Add(time.Duration(10) * time.Second))
 				go ms.handle(conn, id)
 				id++
 			} else {
@@ -44,6 +43,21 @@ func (ms MemcachedProtocolServer) Start() {
 		log.Fatal(err.Error())
 	}
 }
+
+func (ms MemcachedProtocolServer) readLine(buf *bufio.ReadWriter) ([]byte, error) {
+	d, _, err := buf.ReadLine()
+	return d, err
+}
+
+func (ms MemcachedProtocolServer) writeLine(buf *bufio.ReadWriter, s string) error {
+	_, err := buf.WriteString(fmt.Sprintf("%s\r\n", s))
+	if err != nil {
+		return err
+	}
+	err = buf.Flush()
+	return err
+}
+
 func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool, id int) {
 	if noreply == true {
 		log.Printf("%d NOREPLY RESPONSE: %s", id, msg)
@@ -56,20 +70,25 @@ func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 	log.Printf("Spawning new goroutine %d\n", id)
+	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
+	conn.SetDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
 	for {
+		buf := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		noreply := false
-		scanner := bufio.NewScanner(conn)
-		scanner.Scan()
-		line := scanner.Text()
-
-		if line == "" {
-			conn.Write([]byte("ERROR\r\n"))
+		line, err := ms.readLine(buf)
+		if len(line) < 1 {
 			continue
 		}
 
-		log.Printf("%d REQUEST: %s", id, line)
-		args := strings.Split(line, " ")
+		if len(line) < 3 || err != nil {
+			log.Printf("Empty line or error reading line %s\n", err)
+			ms.writeLine(buf, "ERROR")
+			continue
+		}
+
+		args := strings.Split(string(line), " ")
+		log.Printf("%d REQUEST: %s", id, args)
 		cmd := strings.ToLower(args[0])
 
 		if args[len(args)-1] == "noreply" {
@@ -77,11 +96,12 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 		} else {
 			noreply = false
 		}
+
 		log.Printf("%d NOREPLY STATUS: %b\n", id, noreply)
 		switch true {
 		case cmd == "get":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			}
 			for _, arg := range args[1:] {
@@ -95,78 +115,79 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 				if err != nil {
 					break
 				}
+
 				if noreply == false {
-					conn.Write([]byte(fmt.Sprintf("VALUE %s 0 %d\r\n", arg, len(v))))
-					conn.Write(v)
-					conn.Write([]byte("\r\n"))
+					ms.writeLine(buf, fmt.Sprintf("VALUE %s 0 %d", arg, len(v)))
+					ms.writeLine(buf, string(v))
 				}
 			}
-			ms.sendMessage(conn, "END", noreply, id)
+			if noreply == false {
+				ms.writeLine(buf, "END")
+			}
 
 		case cmd == "set":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			}
 			// retrieve body
-			scanner.Scan()
-			body := scanner.Bytes()
-			if len(body) == 0 {
-				ms.sendMessage(conn, "ERROR", false, id)
+			body, err := ms.readLine(buf)
+			if len(body) == 0 || err != nil {
+				ms.writeLine(buf, "ERROR")
 			} else {
 				ms.vdb.Set([]byte(args[1]), []byte(body))
-				ms.sendMessage(conn, "STORED", noreply, id)
+				if noreply == false {
+					ms.writeLine(buf, "STORED")
+				}
 			}
 			break
 
 		case cmd == "replace":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			}
 			// retrieve body
-			scanner.Scan()
-			body := scanner.Bytes()
-			if len(body) == 0 {
-				ms.sendMessage(conn, "ERROR", noreply, id)
+			body, err := ms.readLine(buf)
+			if len(body) == 0 || err != nil {
+				ms.writeLine(buf, "ERROR")
 				break
 			} else {
 				err := ms.vdb.Replace([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Println(err)
-					ms.sendMessage(conn, "NOT_STORED", noreply, id)
+					ms.writeLine(buf, "NOT_STORED")
 				} else {
-					ms.sendMessage(conn, "STORED", noreply, id)
+					ms.writeLine(buf, "STORED")
 				}
 			}
 			break
 
 		case cmd == "add":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			}
 
 			// retrieve body
-			scanner.Scan()
-			body := scanner.Bytes()
-			if len(body) == 0 {
-				ms.sendMessage(conn, "ERROR", false, id)
+			body, err := ms.readLine(buf)
+			if len(body) == 0 || err != nil {
+				ms.writeLine(buf, "ERROR")
 				break
 			} else {
 				err := ms.vdb.Add([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Println(err)
-					ms.sendMessage(conn, "NOT_STORED", noreply, id)
+					ms.writeLine(buf, "NOT_STORED")
 				} else {
-					ms.sendMessage(conn, "STORED", noreply, id)
+					ms.writeLine(buf, "STORED")
 				}
 			}
 			break
 
 		case cmd == "quit":
 			if len(args) > 1 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			} else {
 				conn.Close()
@@ -175,32 +196,32 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 
 		case cmd == "version":
 			if len(args) > 1 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 			} else {
-				ms.sendMessage(conn, "VERSION BEANO", false, id)
+				ms.writeLine(buf, "VERSION BEANO")
 			}
 			break
 
 		case cmd == "flush_all":
 			ms.vdb.Flush()
-			ms.sendMessage(conn, "OK", noreply, id)
+			ms.writeLine(buf, "OK")
 			break
 
 		case cmd == "verbosity":
 			if len(args) < 2 || len(args) > 3 {
-				ms.sendMessage(conn, "ERROR", false, id)
+				ms.writeLine(buf, "ERROR")
 			} else {
-				ms.sendMessage(conn, "OK", noreply, id)
+				ms.writeLine(buf, "OK")
 			}
 			break
 
 		case cmd == "delete":
 			if len(args) < 2 {
-				ms.sendMessage(conn, "ERROR", noreply, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			}
 			if len(args) > 3 {
-				ms.sendMessage(conn, "ERROR", noreply, id)
+				ms.writeLine(buf, "ERROR")
 				break
 			}
 
@@ -209,15 +230,15 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 				log.Println(err)
 			}
 			if deleted == true {
-				ms.sendMessage(conn, "DELETED", noreply, id)
+				ms.writeLine(buf, "DELETED")
 			} else if deleted == false {
-				ms.sendMessage(conn, "NOT_FOUND", noreply, id)
+				ms.writeLine(buf, "NOT_FOUND")
 			}
 			break
 
 		default:
 			log.Printf("NOT IMPLEMENTED: %s\n", args[0])
-			ms.sendMessage(conn, "ERROR", false, id)
+			ms.writeLine(buf, "ERROR")
 			break
 
 		}

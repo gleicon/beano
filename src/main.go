@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	//	"github.com/davecheney/profile"
+	"github.com/davecheney/profile"
 	"log"
 	"runtime"
 )
 
 func main() {
-	//	c := profile.Config{BlockProfile: true, CPUProfile: true, ProfilePath: "/tmp", MemProfile: true, Quiet: false}
-	//	defer profile.Start(&c).Stop()
+	c := profile.Config{BlockProfile: true, CPUProfile: true, ProfilePath: "/tmp", MemProfile: true, Quiet: false}
+	defer profile.Start(&c).Stop()
 	var cpuinfo string
 	if n := runtime.NumCPU(); n > 1 {
 		runtime.GOMAXPROCS(n)
