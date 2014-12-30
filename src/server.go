@@ -44,7 +44,8 @@ func (ms MemcachedProtocolServer) Start() {
 	}
 }
 
-func (ms MemcachedProtocolServer) readLine(buf *bufio.ReadWriter) ([]byte, error) {
+func (ms MemcachedProtocolServer) readLine(conn net.Conn, buf *bufio.ReadWriter) ([]byte, error) {
+	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	d, _, err := buf.ReadLine()
 	return d, err
 }
@@ -71,13 +72,13 @@ func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply
 func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 	log.Printf("Spawning new goroutine %d\n", id)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
-	conn.SetDeadline(time.Now().Add(time.Second * 10))
+	//conn.SetDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
 	for {
 		buf := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		noreply := false
-		line, err := ms.readLine(buf)
-		if len(line) < 1 {
+		line, err := ms.readLine(conn, buf)
+		if line == nil {
 			continue
 		}
 
@@ -131,7 +132,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 				break
 			}
 			// retrieve body
-			body, err := ms.readLine(buf)
+			body, err := ms.readLine(conn, buf)
 			if len(body) == 0 || err != nil {
 				ms.writeLine(buf, "ERROR")
 			} else {
@@ -148,7 +149,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 				break
 			}
 			// retrieve body
-			body, err := ms.readLine(buf)
+			body, err := ms.readLine(conn, buf)
 			if len(body) == 0 || err != nil {
 				ms.writeLine(buf, "ERROR")
 				break
@@ -170,7 +171,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 			}
 
 			// retrieve body
-			body, err := ms.readLine(buf)
+			body, err := ms.readLine(conn, buf)
 			if len(body) == 0 || err != nil {
 				ms.writeLine(buf, "ERROR")
 				break
