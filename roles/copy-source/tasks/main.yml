@@ -8,7 +8,7 @@
   shell: mkdir /home/{{ golang.user }}/bin
 
 - name: set ownership
-  shell: chown {{ golang.user }} src pkg bin
+  shell: chown -R {{ golang.user }}:{{ golang.user }} src pkg bin
 
 - name: copy source from /vagrant to $HOME
   shell: cp -R /vagrant/src /home/{{ golang.user }}/src/beano
