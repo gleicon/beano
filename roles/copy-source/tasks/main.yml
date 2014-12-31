@@ -1,0 +1,14 @@
+- name: create workspace src
+  shell: mkdir /home/{{ golang.user }}/src
+
+- name: create workspace pkg
+  shell: mkdir /home/{{ golang.user }}/pkg
+
+- name: create workspace bin
+  shell: mkdir /home/{{ golang.user }}/bin
+
+- name: set ownership
+  shell: chown {{ golang.user }} src pkg bin
+
+- name: copy source from /vagrant to $HOME
+  shell: cp -R /vagrant/src /home/{{ golang.user }}/src/beano

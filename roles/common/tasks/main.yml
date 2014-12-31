@@ -1,0 +1,12 @@
+- name: update apt package cache
+  apt: update_cache=yes
+
+- name: install common packages debian/ubuntu
+  apt: pkg={{ item }} state=latest
+  with_items:
+    - build-essential
+    - git
+    - supervisor
+    - libxml2-dev
+    - pkg-config
+    - graphviz

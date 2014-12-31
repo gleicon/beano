@@ -1,0 +1,11 @@
+- name: opt directory must exists
+  file:
+    path: /opt/mc-benchmark
+    state: directory
+
+- name: fetch mc-benchmark
+  git: repo=https://github.com/antirez/mc-benchmark.git dest=/opt/mc-benchmark
+
+- name: change dir to source code and compile
+  shell: cd /opt/mc-benchmark && make
+

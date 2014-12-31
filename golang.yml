@@ -1,0 +1,11 @@
+- hosts: all
+  sudo: True
+  vars:
+    golang:
+      version: 1.4
+      user: vagrant
+  roles:
+    - common
+    - golang
+    - mc-benchmark
+    - copy-source

@@ -61,16 +61,16 @@ func (ms MemcachedProtocolServer) writeLine(buf *bufio.ReadWriter, s string) err
 
 func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool, id int) {
 	if noreply == true {
-		log.Printf("%d NOREPLY RESPONSE: %s", id, msg)
+		//log.Printf("%d NOREPLY RESPONSE: %s", id, msg)
 		return
 	}
 	m := fmt.Sprintf("%s\r\n", msg)
 	conn.Write([]byte(m))
-	log.Printf("%d RESPONSE: %s\n", id, m)
+	//log.Printf("%d RESPONSE: %s\n", id, m)
 }
 
 func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
-	log.Printf("Spawning new goroutine %d\n", id)
+	//log.Printf("Spawning new goroutine %d\n", id)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	//conn.SetDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
@@ -83,13 +83,13 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 		}
 
 		if len(line) < 3 || err != nil {
-			log.Printf("Empty line or error reading line %s\n", err)
+			//		log.Printf("Empty line or error reading line %s\n", err)
 			ms.writeLine(buf, "ERROR")
 			continue
 		}
 
 		args := strings.Split(string(line), " ")
-		log.Printf("%d REQUEST: %s", id, args)
+		//	log.Printf("%d REQUEST: %s", id, args)
 		cmd := strings.ToLower(args[0])
 
 		if args[len(args)-1] == "noreply" {
@@ -98,7 +98,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 			noreply = false
 		}
 
-		log.Printf("%d NOREPLY STATUS: %b\n", id, noreply)
+		//	log.Printf("%d NOREPLY STATUS: %b\n", id, noreply)
 		switch true {
 		case cmd == "get":
 			if len(args) < 2 {
@@ -238,7 +238,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 			break
 
 		default:
-			log.Printf("NOT IMPLEMENTED: %s\n", args[0])
+			//		log.Printf("NOT IMPLEMENTED: %s\n", args[0])
 			ms.writeLine(buf, "ERROR")
 			break
 

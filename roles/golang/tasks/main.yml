@@ -1,0 +1,15 @@
+- name: fetch golang
+  get_url: url=https://storage.googleapis.com/golang/go{{ golang.version }}.linux-amd64.tar.gz dest=/tmp/
+
+- name: install golang
+  unarchive: src=/tmp/go{{ golang.version }}.linux-amd64.tar.gz dest=/opt copy=no
+
+- name: PATH setup for user 
+  lineinfile: dest=/home/{{ golang.user }}/.bashrc line="export PATH=/opt/go/bin:$PATH"
+
+- name: GOROOT setup for user 
+  lineinfile: dest=/home/{{ golang.user }}/.bashrc line="export GOROOT=/opt/go"
+
+- name: GOPATH setup for user 
+  lineinfile: dest=/home/{{ golang.user }}/.bashrc line="export GOPATH=$HOME"
+

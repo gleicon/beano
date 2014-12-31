@@ -1,3 +1,5 @@
 *.db
 beano
 src.test
+.vagrant
+
