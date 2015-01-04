@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -72,20 +73,29 @@ func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply
 func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 	//log.Printf("Spawning new goroutine %d\n", id)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
-	//conn.SetDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
-	idle := 0
+	start_t := time.Now()
 	for {
 		buf := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		noreply := false
 		line, err := ms.readLine(conn, buf)
-		if line == nil {
-			idle++
-			if idle == 1000 {
-				conn.Close()
-				return
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("%d Connection closed: error %s\n", id, err)
 			}
-			continue
+			return
+		}
+
+		if line == nil {
+			if time.Now().Sub(start_t) > time.Second*3 {
+				conn.Close()
+				log.Printf("%d Closing idle connection after timeout\n", id)
+				return
+			} else {
+				continue
+			}
+		} else {
+			start_t = time.Now()
 		}
 
 		if len(line) < 3 || err != nil {
