@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -80,6 +81,12 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 		buf := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		noreply := false
 		line, err := ms.readLine(conn, buf)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("%d Connection closed: error %s\n", id, err)
+			}
+			return
+		}
 		if line == nil {
 			idle++
 			if idle > 1000 {
