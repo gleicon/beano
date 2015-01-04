@@ -12,10 +12,10 @@ import (
 type MemcachedProtocolServer struct {
 	address  string
 	listener net.Listener
-	vdb      *KVBoltDBBackend
+	vdb      *KVDBBackend
 }
 
-func NewMemcachedProtocolServer(address string, vdb *KVBoltDBBackend) *MemcachedProtocolServer {
+func NewMemcachedProtocolServer(address string, vdb *KVDBBackend) *MemcachedProtocolServer {
 	ms := MemcachedProtocolServer{address, nil, vdb}
 	return &ms
 }
