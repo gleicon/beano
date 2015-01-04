@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/jmhodges/levigo"
+	"strconv"
+	"sync"
 )
 
 /*
@@ -57,6 +59,7 @@ type KVDBBackend struct {
 	maxKeysPerBucket int
 	ro               *levigo.ReadOptions
 	wo               *levigo.WriteOptions
+	dbMutex          sync.RWMutex
 }
 
 func NewKVDBBackend(filename string, bucketName string, maxKeysPerBucket int) *KVDBBackend {
@@ -104,45 +107,82 @@ func (be KVDBBackend) Decr(key []byte, value uint) (int, error) {
 
 // Generic get and set for incr/decr tx
 func (be KVDBBackend) Increment(key []byte, value int, create_if_not_exists bool) (int, error) {
-	return 0, nil
+	be.dbMutex.Lock()
+	v, err := be.db.Get(be.ro, key)
+	if create_if_not_exists == false {
+		if v == nil || err != nil {
+			be.dbMutex.Unlock()
+			return -1, fmt.Errorf("Key %s do not exists, create_if_not_exists set to false - %s", string(key), err)
+		}
+	}
+	if v == nil {
+		err = be.db.Put(be.wo, key, []byte("0"))
+		be.dbMutex.Unlock()
+		return 0, nil
+	} else {
+		i, err := strconv.Atoi(string(v))
+		if err != nil {
+			be.dbMutex.Unlock()
+			return -1, fmt.Errorf("Data cannot be incr/decr for key %s - %s", string(key), string(v))
+		}
+		i = i + value
+		s := fmt.Sprintf("%d", i)
+		err = be.db.Put(be.wo, key, []byte(s))
+		if err != nil {
+			be.dbMutex.Unlock()
+			return -1, fmt.Errorf("Error key %s - %s", string(key), err)
+		}
+		be.dbMutex.Unlock()
+		return i, nil
+	}
 }
 
 func (be KVDBBackend) Put(key []byte, value []byte, replace bool, passthru bool) error {
+	be.dbMutex.Lock()
 	if passthru == false {
 		if replace == true {
 			v, err := be.db.Get(be.ro, key)
 			if v == nil || err != nil {
+				be.dbMutex.Unlock()
 				return fmt.Errorf("Key %s do not exists, replace set to true - %s", string(key), err)
 			}
 		} else {
 			v, err := be.db.Get(be.ro, key)
 			if v != nil {
+				be.dbMutex.Unlock()
 				return fmt.Errorf("Key %s exists, replace set to false - %s", string(key), err)
 			}
 		}
 	}
 	err := be.db.Put(be.wo, key, value)
+	be.dbMutex.Unlock()
 	return err
 }
 
 func (be KVDBBackend) Get(key []byte) ([]byte, error) {
 	ro := levigo.NewReadOptions()
+	be.dbMutex.RLock()
 	v, err := be.db.Get(ro, key)
+	be.dbMutex.RUnlock()
 	return v, err
 }
 
 // returns deleted, error
 func (be KVDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) {
+	be.dbMutex.Lock()
 	if only_if_exists == true {
 		x, err := be.db.Get(be.ro, key)
 		if err != nil {
+			be.dbMutex.Unlock()
 			return false, err
 		}
 		if x == nil {
+			be.dbMutex.Unlock()
 			return false, nil
 		}
 	}
 	err := be.db.Delete(be.wo, key)
+	be.dbMutex.Unlock()
 	return true, err
 }
 
