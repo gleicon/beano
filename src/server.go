@@ -74,11 +74,17 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	//conn.SetDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
+	idle := 0
 	for {
 		buf := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		noreply := false
 		line, err := ms.readLine(conn, buf)
 		if line == nil {
+			idle++
+			if idle == 1000 {
+				conn.Close()
+				return
+			}
 			continue
 		}
 

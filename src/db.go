@@ -64,7 +64,7 @@ func NewKVDBBackend(filename string, bucketName string, maxKeysPerBucket int) *K
 
 	b := KVDBBackend{filename: filename, db: nil, maxKeysPerBucket: maxKeysPerBucket}
 	opts := levigo.NewOptions()
-	filter := levigo.NewBloomFilter(128)
+	filter := levigo.NewBloomFilter(32)
 	opts.SetFilterPolicy(filter)
 	opts.SetCache(levigo.NewLRUCache(3 << 30))
 	opts.SetCreateIfMissing(true)
@@ -126,7 +126,8 @@ func (be KVDBBackend) Put(key []byte, value []byte, replace bool, passthru bool)
 }
 
 func (be KVDBBackend) Get(key []byte) ([]byte, error) {
-	v, err := be.db.Get(be.ro, key)
+	ro := levigo.NewReadOptions()
+	v, err := be.db.Get(ro, key)
 	return v, err
 }
 
