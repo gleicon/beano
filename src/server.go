@@ -14,15 +14,30 @@ type MemcachedProtocolServer struct {
 	address  string
 	listener net.Listener
 	vdb      *KVDBBackend
+	paused   bool
 }
 
 func NewMemcachedProtocolServer(address string, vdb *KVDBBackend) *MemcachedProtocolServer {
-	ms := MemcachedProtocolServer{address, nil, vdb}
+	ms := MemcachedProtocolServer{address, nil, vdb, false}
 	return &ms
 }
 
 func (ms MemcachedProtocolServer) Close() {
+	ms.vdb.Close()
 	ms.Close()
+}
+
+func (ms MemcachedProtocolServer) SwitchDB(newDB string) error {
+	vdb, err := NewKVDBBackend(newDB)
+	if err != nil {
+		log.Printf("Error opening db: %s\n", err)
+	}
+	// TODO: fix this mess.
+	ms.paused = true
+	ms.vdb.Close()
+	ms.vdb = vdb
+	ms.paused = false
+	return nil
 }
 
 func (ms MemcachedProtocolServer) Start() {
@@ -33,6 +48,9 @@ func (ms MemcachedProtocolServer) Start() {
 	ms.listener, err = net.Listen("tcp", ms.address)
 	if err == nil {
 		for {
+			if ms.paused {
+				ms.listener.Close()
+			}
 			if conn, err := ms.listener.Accept(); err == nil {
 				go ms.handle(conn, id)
 				id++
@@ -130,6 +148,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 					continue
 				}
 				if err != nil {
+					log.Printf("%d error get: %s \n", id, err)
 					break
 				}
 
@@ -232,6 +251,20 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 			}
 			break
 
+		case cmd == "switchdb":
+			if len(args) < 2 || len(args) > 3 {
+				ms.writeLine(buf, "ERROR")
+			} else {
+				err := ms.SwitchDB(args[1])
+				if err != nil {
+					ms.writeLine(buf, "ERROR")
+					log.Printf("%d switchdb error: %s\n", id, err)
+				}
+				s := fmt.Sprintf("%s\nOK", args[1])
+				ms.writeLine(buf, s)
+			}
+			break
+
 		case cmd == "delete":
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
@@ -254,7 +287,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn, id int) {
 			break
 
 		default:
-			//		log.Printf("NOT IMPLEMENTED: %s\n", args[0])
+			log.Printf("%d NOT IMPLEMENTED: %s\n", id, args[0])
 			ms.writeLine(buf, "ERROR")
 			break
 

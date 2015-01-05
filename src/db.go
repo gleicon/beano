@@ -54,18 +54,18 @@ type InternalValue struct {
 }
 
 type KVDBBackend struct {
-	filename         string
-	db               *levigo.DB
-	maxKeysPerBucket int
-	ro               *levigo.ReadOptions
-	wo               *levigo.WriteOptions
-	dbMutex          sync.RWMutex
+	filename string
+	db       *levigo.DB
+	ro       *levigo.ReadOptions
+	wo       *levigo.WriteOptions
+	dbMutex  sync.RWMutex
 }
 
-func NewKVDBBackend(filename string, bucketName string, maxKeysPerBucket int) *KVDBBackend {
+func NewKVDBBackend(filename string) (*KVDBBackend, error) {
 	var err error
 
-	b := KVDBBackend{filename: filename, db: nil, maxKeysPerBucket: maxKeysPerBucket}
+	b := KVDBBackend{db: nil}
+	b.filename = filename
 	opts := levigo.NewOptions()
 	filter := levigo.NewBloomFilter(32)
 	opts.SetFilterPolicy(filter)
@@ -76,9 +76,9 @@ func NewKVDBBackend(filename string, bucketName string, maxKeysPerBucket int) *K
 	b.wo = levigo.NewWriteOptions()
 
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return &b
+	return &b, nil
 }
 
 func (be KVDBBackend) Set(key []byte, value []byte) error {
@@ -186,7 +186,7 @@ func (be KVDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) {
 	return true, err
 }
 
-func (be KVDBBackend) CloseDB() {
+func (be KVDBBackend) Close() {
 	be.db.Close()
 }
 
