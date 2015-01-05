@@ -3,9 +3,26 @@ package main
 import (
 	"fmt"
 	"github.com/davecheney/profile"
-	"log"
+	logging "github.com/op/go-logging"
+	"os"
 	"runtime"
 )
+
+func setLogger() *logging.Logger {
+	var log = logging.MustGetLogger("beano")
+	var format = logging.MustStringFormatter(
+		"%{color}%{time:15:04:05.000000} %{level:.5s} %{id:04d}%{color:reset} %{message}",
+	)
+
+	var logBackend = logging.NewLogBackend(os.Stderr, "", 0)
+	//bel := logging.AddModuleLevel(logBackend)
+	//bel.SetLevel(logging.INFO, "")
+	var bf = logging.NewBackendFormatter(logBackend, format)
+	logging.SetBackend(bf)
+	return log
+}
+
+var log = setLogger()
 
 func main() {
 	c := profile.Config{BlockProfile: true, CPUProfile: true, ProfilePath: "/tmp", MemProfile: true, Quiet: false}
@@ -17,11 +34,12 @@ func main() {
 	} else {
 		cpuinfo = "1 CPU"
 	}
-	log.Printf("beano (%s)", cpuinfo)
+
+	log.Info("beano (%s)", cpuinfo)
 
 	vdb, err := NewKVDBBackend("memcached.db")
 	if err != nil {
-		log.Printf("Error opening db: %s\n", err)
+		log.Error("Error opening db: %s\n", err)
 	}
 	mc := NewMemcachedProtocolServer("127.0.0.1:11211", vdb)
 	defer mc.Close()
