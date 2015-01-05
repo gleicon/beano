@@ -34,7 +34,7 @@ func (ms MemcachedProtocolServer) SwitchDB(newDB string) error {
 	}
 	// TODO: fix this mess.
 	ms.paused = true
-	ms.vdb.Close()
+	//ms.vdb.Close()
 	ms.vdb = vdb
 	ms.paused = false
 	return nil
