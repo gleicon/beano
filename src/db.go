@@ -190,6 +190,13 @@ func (be KVDBBackend) Close() {
 	be.db.Close()
 }
 
+func (be KVDBBackend) Stats() string {
+	return be.db.PropertyValue("leveldb.stats")
+}
+
+func (be KVDBBackend) GetDbPath() string {
+	return be.filename
+}
+
 func (be KVDBBackend) Flush() error       { return nil }
-func (be KVDBBackend) Stats() error       { return nil }
 func (be KVDBBackend) BucketStats() error { return nil }

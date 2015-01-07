@@ -45,16 +45,20 @@ func (ms MemcachedProtocolServer) Start() {
 	ms.listener, err = net.Listen("tcp", ms.address)
 	if err == nil {
 		for {
+			// TODO: not the best place. probably disable SET's only until the db is the same for all conns ?
 			if ms.paused {
 				ms.listener.Close()
 			}
 			if conn, err := ms.listener.Accept(); err == nil {
+				totalConnections.Inc(1)
 				go ms.handle(conn)
 			} else {
+				networkErrors.Inc(1)
 				log.Error(err.Error())
 			}
 		}
 	} else {
+		networkErrors.Inc(1)
 		log.Fatal(err.Error())
 	}
 }
@@ -74,18 +78,10 @@ func (ms MemcachedProtocolServer) writeLine(buf *bufio.ReadWriter, s string) err
 	return err
 }
 
-func (ms MemcachedProtocolServer) sendMessage(conn net.Conn, msg string, noreply bool, id int) {
-	if noreply == true {
-		log.Debug("%d NOREPLY RESPONSE: %s", id, msg)
-		return
-	}
-	m := fmt.Sprintf("%s\r\n", msg)
-	conn.Write([]byte(m))
-	log.Debug("%d RESPONSE: %s\n", id, m)
-}
-
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
-	log.Debug("Spawning new goroutine")
+	totalThreads.Inc(1)
+	currThreads.Inc(1)
+	defer currThreads.Dec(1)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
 	start_t := time.Now()
@@ -95,6 +91,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		line, err := ms.readLine(conn, buf)
 		if err != nil {
 			if err != io.EOF {
+				networkErrors.Inc(1)
 				log.Error("Connection closed: error %s\n", err)
 			}
 			return
@@ -103,6 +100,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		if line == nil {
 			if time.Now().Sub(start_t) > time.Second*3 {
 				conn.Close()
+				networkErrors.Inc(1)
 				log.Info("Closing idle connection after timeout")
 				return
 			} else {
@@ -113,11 +111,11 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		}
 
 		if len(line) < 3 || err != nil {
+			protocolErrors.Inc(1)
 			ms.writeLine(buf, "ERROR")
 			continue
 		}
 
-		start := time.Now()
 		args := strings.Split(string(line), " ")
 		cmd := strings.ToLower(args[0])
 
@@ -131,14 +129,17 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "get":
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			}
+			cmdGet.Inc(1)
 			for _, arg := range args[1:] {
 				if arg == " " || arg == "" {
 					break
 				}
 				v, err := ms.vdb.Get([]byte(arg))
 				if v == nil {
+					getMisses.Inc(1)
 					continue
 				}
 				if err != nil {
@@ -149,6 +150,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				if noreply == false {
 					ms.writeLine(buf, fmt.Sprintf("VALUE %s 0 %d", arg, len(v)))
 					ms.writeLine(buf, string(v))
+					getHits.Inc(1)
 				}
 			}
 			if noreply == false {
@@ -158,19 +160,25 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "set":
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			}
 			// retrieve body
 			body, err := ms.readLine(conn, buf)
 			if len(body) == 0 || err != nil {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 			} else {
 				err = ms.vdb.Set([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Error("SET: %s", err)
 					ms.writeLine(buf, "ERROR")
+					protocolErrors.Inc(1)
 					break
 				}
+				cmdSet.Inc(1)
+				totalItems.Inc(1)
+				currItems.Inc(1)
 				if noreply == false {
 					ms.writeLine(buf, "STORED")
 				}
@@ -180,12 +188,14 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "replace":
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			}
 			// retrieve body
 			body, err := ms.readLine(conn, buf)
 			if len(body) == 0 || err != nil {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			} else {
 				err := ms.vdb.Replace([]byte(args[1]), []byte(body))
@@ -201,6 +211,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "add":
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			}
 
@@ -208,6 +219,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			body, err := ms.readLine(conn, buf)
 			if len(body) == 0 || err != nil {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			} else {
 				err := ms.vdb.Add([]byte(args[1]), []byte(body))
@@ -223,6 +235,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "quit":
 			if len(args) > 1 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			} else {
 				conn.Close()
@@ -232,6 +245,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "version":
 			if len(args) > 1 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 			} else {
 				ms.writeLine(buf, "VERSION BEANO")
 			}
@@ -245,6 +259,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "verbosity":
 			if len(args) < 2 || len(args) > 3 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 			} else {
 				ms.writeLine(buf, "OK")
 			}
@@ -253,10 +268,12 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "switchdb":
 			if len(args) < 2 || len(args) > 3 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 			} else {
 				err := ms.SwitchDB(args[1])
 				if err != nil {
 					ms.writeLine(buf, "ERROR")
+					protocolErrors.Inc(1)
 					log.Error("SWITCHDB: %s", err)
 				}
 				s := fmt.Sprintf("%s\nOK", args[1])
@@ -267,10 +284,12 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 		case cmd == "delete":
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			}
 			if len(args) > 3 {
 				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
 				break
 			}
 
@@ -280,17 +299,31 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			}
 			if deleted == true {
 				ms.writeLine(buf, "DELETED")
+				currItems.Dec(1)
 			} else if deleted == false {
 				ms.writeLine(buf, "NOT_FOUND")
 			}
 			break
 
+		case cmd == "dbstats":
+			if len(args) > 1 {
+				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
+			} else {
+				ms.writeLine(buf, "VERSION BEANO")
+			}
+			s := ms.vdb.Stats()
+			ms.writeLine(buf, s)
+			ms.writeLine(buf, "OK")
+			break
+
 		default:
 			log.Error("NOT IMPLEMENTED: %s", args[0])
 			ms.writeLine(buf, "ERROR")
+			protocolErrors.Inc(1)
 			break
 
 		}
-		log.Info("%s %s %s", strings.ToUpper(cmd), args[1:], time.Since(start))
+		//log.Info("%s %s %s", strings.ToUpper(cmd), args[1:], time.Since(start))
 	}
 }
