@@ -10,58 +10,20 @@ import (
 )
 
 type MemcachedProtocolServer struct {
-	address  string
-	listener net.Listener
-	vdb      *KVDBBackend
 	readonly bool
 }
 
-func NewMemcachedProtocolServer(address string, filename string) *MemcachedProtocolServer {
-	var err error
-	ms := MemcachedProtocolServer{address, nil, nil, false}
-	ms.vdb, err = NewKVDBBackend(filename)
-	if err != nil {
-		log.Error("Error opening db: %s\n", err)
-	}
+func NewMemcachedProtocolServer(readonly bool) *MemcachedProtocolServer {
+	ms := MemcachedProtocolServer{readonly: readonly}
 	return &ms
 }
 
-func (ms MemcachedProtocolServer) Close() {
-	ms.readonly = true
-	ms.listener.Close()
-	ms.vdb.Close()
+func (ms MemcachedProtocolServer) ReadOnly(readonly bool) {
+	ms.readonly = readonly
 }
 
 func (ms MemcachedProtocolServer) SwitchDB(newDB string) error {
-	vdb, err := NewKVDBBackend(newDB)
-	if err != nil {
-		log.Error("Error opening db: %s\n", err)
-	}
-	ms.readonly = true
-	//ms.vdb.Close()
-	ms.vdb = vdb
-	ms.readonly = false
 	return nil
-}
-
-func (ms MemcachedProtocolServer) Start() {
-	var err error
-
-	ms.listener, err = net.Listen("tcp", ms.address)
-	if err == nil {
-		for {
-			if conn, err := ms.listener.Accept(); err == nil {
-				totalConnections.Inc(1)
-				go ms.handle(conn)
-			} else {
-				networkErrors.Inc(1)
-				log.Error(err.Error())
-			}
-		}
-	} else {
-		networkErrors.Inc(1)
-		log.Fatal(err.Error())
-	}
 }
 
 func (ms MemcachedProtocolServer) readLine(conn net.Conn, buf *bufio.ReadWriter) ([]byte, error) {
@@ -87,8 +49,7 @@ func (ms MemcachedProtocolServer) check_ro(buf *bufio.ReadWriter) bool {
 	return ms.readonly
 }
 
-func (ms MemcachedProtocolServer) handle(conn net.Conn) {
-	log.Debug(ms.vdb.GetDbPath())
+func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 	totalThreads.Inc(1)
 	currThreads.Inc(1)
 	defer currThreads.Dec(1)
@@ -147,7 +108,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				if arg == " " || arg == "" {
 					break
 				}
-				v, err := ms.vdb.Get([]byte(arg))
+				v, err := vdb.Get([]byte(arg))
 				if v == nil {
 					getMisses.Inc(1)
 					continue
@@ -182,7 +143,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)
 			} else {
-				err = ms.vdb.Set([]byte(args[1]), []byte(body))
+				err = vdb.Set([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Error("SET: %s", err)
 					ms.writeLine(buf, "ERROR")
@@ -214,7 +175,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				protocolErrors.Inc(1)
 				break
 			} else {
-				err := ms.vdb.Replace([]byte(args[1]), []byte(body))
+				err := vdb.Replace([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Error("REPLACE: %s", err)
 					ms.writeLine(buf, "NOT_STORED")
@@ -241,7 +202,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				protocolErrors.Inc(1)
 				break
 			} else {
-				err := ms.vdb.Add([]byte(args[1]), []byte(body))
+				err := vdb.Add([]byte(args[1]), []byte(body))
 				if err != nil {
 					log.Error("ADD: %s", err)
 					ms.writeLine(buf, "NOT_STORED")
@@ -274,7 +235,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			if ms.check_ro(buf) {
 				break
 			}
-			ms.vdb.Flush()
+			vdb.Flush()
 			ms.writeLine(buf, "OK")
 			break
 
@@ -321,7 +282,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 				break
 			}
 
-			deleted, err := ms.vdb.Delete([]byte(args[1]), true)
+			deleted, err := vdb.Delete([]byte(args[1]), true)
 			if err != nil {
 				log.Error("DELETE: %s", err)
 			}
@@ -340,7 +301,7 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			} else {
 				ms.writeLine(buf, "VERSION BEANO")
 			}
-			s := ms.vdb.Stats()
+			s := vdb.Stats()
 			ms.writeLine(buf, s)
 			ms.writeLine(buf, "OK")
 			break

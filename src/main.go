@@ -36,11 +36,11 @@ func main() {
 
 	log.Info("beano (%s)", cpuinfo)
 
-	filename := "memcacheddb"
+	filename := "memcached.db"
+	address := "127.0.0.1:11211"
+
 	initializeMetrics(filename)
 
-	mc := NewMemcachedProtocolServer("127.0.0.1:11211", filename)
+	serve(address, filename)
 
-	defer mc.Close()
-	mc.Start()
 }
