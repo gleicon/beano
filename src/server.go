@@ -13,17 +13,23 @@ type MemcachedProtocolServer struct {
 	address  string
 	listener net.Listener
 	vdb      *KVDBBackend
-	paused   bool
+	readonly bool
 }
 
-func NewMemcachedProtocolServer(address string, vdb *KVDBBackend) *MemcachedProtocolServer {
-	ms := MemcachedProtocolServer{address, nil, vdb, false}
+func NewMemcachedProtocolServer(address string, filename string) *MemcachedProtocolServer {
+	var err error
+	ms := MemcachedProtocolServer{address, nil, nil, false}
+	ms.vdb, err = NewKVDBBackend(filename)
+	if err != nil {
+		log.Error("Error opening db: %s\n", err)
+	}
 	return &ms
 }
 
 func (ms MemcachedProtocolServer) Close() {
+	ms.readonly = true
+	ms.listener.Close()
 	ms.vdb.Close()
-	ms.Close()
 }
 
 func (ms MemcachedProtocolServer) SwitchDB(newDB string) error {
@@ -31,11 +37,10 @@ func (ms MemcachedProtocolServer) SwitchDB(newDB string) error {
 	if err != nil {
 		log.Error("Error opening db: %s\n", err)
 	}
-	// TODO: fix this mess.
-	ms.paused = true
+	ms.readonly = true
 	//ms.vdb.Close()
 	ms.vdb = vdb
-	ms.paused = false
+	ms.readonly = false
 	return nil
 }
 
@@ -45,10 +50,6 @@ func (ms MemcachedProtocolServer) Start() {
 	ms.listener, err = net.Listen("tcp", ms.address)
 	if err == nil {
 		for {
-			// TODO: not the best place. probably disable SET's only until the db is the same for all conns ?
-			if ms.paused {
-				ms.listener.Close()
-			}
 			if conn, err := ms.listener.Accept(); err == nil {
 				totalConnections.Inc(1)
 				go ms.handle(conn)
@@ -78,7 +79,16 @@ func (ms MemcachedProtocolServer) writeLine(buf *bufio.ReadWriter, s string) err
 	return err
 }
 
+func (ms MemcachedProtocolServer) check_ro(buf *bufio.ReadWriter) bool {
+	if ms.readonly {
+		ms.writeLine(buf, "ERROR")
+		readonlyErrors.Inc(1)
+	}
+	return ms.readonly
+}
+
 func (ms MemcachedProtocolServer) handle(conn net.Conn) {
+	log.Debug(ms.vdb.GetDbPath())
 	totalThreads.Inc(1)
 	currThreads.Inc(1)
 	defer currThreads.Dec(1)
@@ -158,6 +168,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			}
 
 		case cmd == "set":
+			if ms.check_ro(buf) {
+				break
+			}
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)
@@ -186,6 +199,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			break
 
 		case cmd == "replace":
+			if ms.check_ro(buf) {
+				break
+			}
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)
@@ -209,6 +225,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			break
 
 		case cmd == "add":
+			if ms.check_ro(buf) {
+				break
+			}
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)
@@ -252,6 +271,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			break
 
 		case cmd == "flush_all":
+			if ms.check_ro(buf) {
+				break
+			}
 			ms.vdb.Flush()
 			ms.writeLine(buf, "OK")
 			break
@@ -266,6 +288,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			break
 
 		case cmd == "switchdb":
+			if ms.check_ro(buf) {
+				break
+			}
 			if len(args) < 2 || len(args) > 3 {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)
@@ -282,6 +307,9 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			break
 
 		case cmd == "delete":
+			if ms.check_ro(buf) {
+				break
+			}
 			if len(args) < 2 {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)
@@ -324,6 +352,6 @@ func (ms MemcachedProtocolServer) handle(conn net.Conn) {
 			break
 
 		}
-		//log.Info("%s %s %s", strings.ToUpper(cmd), args[1:], time.Since(start))
+		responseTiming.Update(time.Since(start_t))
 	}
 }

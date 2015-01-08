@@ -3,6 +3,7 @@ package main
 import (
 	"expvar"
 	"fmt"
+	logging "github.com/op/go-logging"
 	"github.com/rcrowley/go-metrics"
 	"os"
 	"time"
@@ -24,6 +25,8 @@ var getHits = metrics.NewCounter()          //"get_hits"
 var getMisses = metrics.NewCounter()        //"get_misses"
 var protocolErrors = metrics.NewCounter()   //"protocol_errors"
 var networkErrors = metrics.NewCounter()    //"network_errors"
+var readonlyErrors = metrics.NewCounter()   //"readonly_errors"
+var responseTiming = metrics.NewTimer()     // response_timing
 
 func initializeMetrics(dbp string) {
 	pid.Set(int64(os.Getpid()))
@@ -42,7 +45,9 @@ func initializeMetrics(dbp string) {
 	metrics.Register("get_misses", getMisses)
 	metrics.Register("protocol_errors", protocolErrors)
 	metrics.Register("network_errors", networkErrors)
-
+	metrics.Register("readonly_errors", readonlyErrors)
+	metrics.Register("response_timing", responseTiming)
+	go metrics.Log(metrics.DefaultRegistry, time.Duration(60*time.Second), logging.NewLogBackend(os.Stdout, "", 0).Logger)
 }
 
 func metrics2expvar(r metrics.Registry) {

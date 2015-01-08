@@ -36,15 +36,10 @@ func main() {
 
 	log.Info("beano (%s)", cpuinfo)
 
-	vdb, err := NewKVDBBackend("memcached.db")
+	filename := "memcacheddb"
+	initializeMetrics(filename)
 
-	if err != nil {
-		log.Error("Error opening db: %s\n", err)
-	}
-
-	initializeMetrics(vdb.GetDbPath())
-
-	mc := NewMemcachedProtocolServer("127.0.0.1:11211", vdb)
+	mc := NewMemcachedProtocolServer("127.0.0.1:11211", filename)
 
 	defer mc.Close()
 	mc.Start()
