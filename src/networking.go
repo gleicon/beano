@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -32,7 +33,7 @@ func switchDBHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func serve(address string, filename string) {
+func serve(ip string, port string, filename string) {
 	var err error
 	messages = make(chan string)
 
@@ -40,8 +41,8 @@ func serve(address string, filename string) {
 		http.HandleFunc("/api/v1/switchdb", switchDBHandler)
 		http.ListenAndServe(":8080", nil)
 	}()
-
-	listener, err := net.Listen("tcp", address)
+	addr := fmt.Sprintf("%s:%s", ip, port)
+	listener, err := net.Listen("tcp", addr)
 	defer listener.Close()
 
 	vdb := loadDB(filename)

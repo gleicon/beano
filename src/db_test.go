@@ -7,10 +7,10 @@ import (
 	"time"
 )
 
-var vdb *KVBoltDBBackend
+var vdb *KVDBBackend
 
 func init() {
-	vdb = NewKVBoltDBBackend("bolt.db", "memcached", 10000)
+	vdb, _ = NewKVDBBackend("test_beano.db")
 	rand.Seed(time.Now().UTC().UnixNano())
 }
 
@@ -145,22 +145,4 @@ func TestDecr(t *testing.T) {
 		t.Error(errUnexpected(string(v)))
 	}
 	vdb.Delete(key, false)
-}
-
-func TestFlush(t *testing.T) {
-	key := []byte("beano")
-	value := []byte("clapton")
-	vdb.Delete(key, false)
-	vdb.Set(key, value)
-	if v, err := vdb.Get(key); err != nil {
-		t.Error(err)
-	} else if v == nil {
-		t.Error(errUnexpected(v))
-	}
-	vdb.Flush()
-	if v, err := vdb.Get(key); err != nil {
-		t.Error(err)
-	} else if v != nil {
-		t.Error(errUnexpected(v))
-	}
 }
