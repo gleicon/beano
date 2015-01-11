@@ -15,4 +15,3 @@ test:
 	go test -v
 	rm bolt.db
 
-.PHONY: server

@@ -1,15 +1,48 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/davecheney/profile"
-	"log"
+	logging "github.com/op/go-logging"
+	"os"
 	"runtime"
 )
 
+func setLogger() *logging.Logger {
+	var log = logging.MustGetLogger("beano")
+	var format = logging.MustStringFormatter(
+		"%{color}%{time:15:04:05.000000} %{level:.5s} %{id:04d}%{color:reset} %{message}",
+	)
+	var logBackend = logging.NewLogBackend(os.Stdout, "", 0)
+	//	bel := logging.AddModuleLevel(logBackend)
+	//	bel.SetLevel(logging.ERROR, "")
+	var bf = logging.NewBackendFormatter(logBackend, format)
+	logging.SetBackend(bf)
+	return log
+}
+
+var log = setLogger()
+
 func main() {
-	c := profile.Config{BlockProfile: true, CPUProfile: true, ProfilePath: "/tmp", MemProfile: true, Quiet: false}
-	defer profile.Start(&c).Stop()
+	address := flag.String("s", "127.0.0.1", "Bind Address")
+	port := flag.String("p", "11211", "Bind Port")
+	filename := flag.String("f", "./memcached.db", "path and file for database")
+	pf := flag.Bool("q", false, "Enable profiling")
+
+	flag.Usage = func() {
+		fmt.Println("Usage: beano [-s ip] [-p port] [-f /path/to/db/file -q]")
+		fmt.Println("default ip: 127.0.0.1")
+		fmt.Println("default port: 11211")
+		fmt.Println("default file: ./memcached.db")
+		fmt.Println("-q enables profiling to /tmp/*.prof")
+		os.Exit(1)
+	}
+	flag.Parse()
+	if *pf == true {
+		c := profile.Config{BlockProfile: true, CPUProfile: true, ProfilePath: "/tmp", MemProfile: true, Quiet: false}
+		defer profile.Start(&c).Stop()
+	}
 	var cpuinfo string
 	if n := runtime.NumCPU(); n > 1 {
 		runtime.GOMAXPROCS(n)
@@ -17,10 +50,11 @@ func main() {
 	} else {
 		cpuinfo = "1 CPU"
 	}
-	log.Printf("beano (%s)", cpuinfo)
 
-	vdb := NewKVBoltDBBackend("memcached.db", "memcached", 10000)
-	mc := NewMemcachedProtocolServer("127.0.0.1:11211", vdb)
-	defer mc.Close()
-	mc.Start()
+	log.Info("beano (%s)", cpuinfo)
+
+	initializeMetrics(*filename)
+
+	serve(*address, *port, *filename)
+
 }
