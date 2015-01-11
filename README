@@ -3,3 +3,5 @@
 
     TODO: pass memcapable -a -v basic test
     TODO: use mc-benchmark and fix contention (http://oldblog.antirez.com/post/redis-memcached-benchmark.html)
+
+    The BoltDB impl still need some love.
