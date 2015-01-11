@@ -11,37 +11,37 @@
 
 ## Build
   - Build locally with make
-  	check src/Makefile.defs for specific settings on lib and include paths. Type make. 
+    - check src/Makefile.defs for specific settings on lib and include paths. Type make. 
 
   - Use Vagrant + ansible (provided) to spin an Ubuntu server with mc-benchmark
-  	vagrant up; vagrant ssh
+    - vagrant up; vagrant ssh
 
   - Use ansible to build in your VPS 
-  	ansible-playbook -i hosts.ini golang.yml
+    - ansible-playbook -i hosts.ini golang.yml
 
 ## Commands
   - any regular memcached client will do
-	ascii quit                              [pass]
-	ascii version                           [pass]
-	ascii set                               [pass]
-	ascii set noreply                       [pass]
-	ascii get                               [pass]
-	ascii mget                              [pass]
-	ascii add                               [pass]
-	ascii replace                           [pass]
-	ascii delete                            [pass]
+    - ascii quit                              [pass]
+    - ascii version                           [pass]
+    - ascii set                               [pass]
+    - ascii set noreply                       [pass]
+    - ascii get                               [pass]
+    - ascii mget                              [pass]
+    - ascii add                               [pass]
+    - ascii replace                           [pass]
+    - ascii delete                            [pass]
 
- - not in memcached specs: 
-	statdb - stats from leveldb
-	switchdb <dbname> - switch to new db file
+  - not in memcached specs: 
+    - statdb - stats from leveldb
+    - switchdb <dbname> - switch to new db file
 
 ## API
   - /api/v1/switchdb
-    changes database on the fly
-    example: curl -d "filename=/tmp/memcached2.db" http://127.0.0.1:11211/api/v1/switchdb
+    - changes database on the fly
+    - example: curl -d "filename=/tmp/memcached2.db" http://127.0.0.1:11211/api/v1/switchdb
 
   - /debug/vars
-    expvar json
+    - expvar json
 
 ## TODO
    - It already pass the basics of memcapable -a for set/get/replace. Incr and Decr are wip. 
