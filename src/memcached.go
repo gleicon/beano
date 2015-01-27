@@ -321,8 +321,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			ms.writeLine(buf, s)
 			ms.writeLine(buf, "OK")
 			break
-		// TODO: find a memcached command to replace - range <prefix> [limit]
-		case cmd == "range":
+		case cmd == "range" || cmd == "gets":
 			if len(args) < 2 || len(args) > 3 {
 				ms.writeLine(buf, "ERROR")
 				protocolErrors.Inc(1)

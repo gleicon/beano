@@ -8,6 +8,7 @@
   - can switch databases on the fly
   - can be set readonly
   - metrics ridden (expvar and go-metrics)
+  - range queries by key prefix
 
 ## Build
   - Build locally with make
@@ -34,6 +35,10 @@
   - not in memcached specs: 
     - statdb - stats from leveldb
     - switchdb <dbname> - switch to new db file
+    - range <prefix> [limit] - range query of keys that begin w/ prefix, limited by [limit]. no limit or -1 means bring it all.
+
+- modified behaviour than memcached
+    - gets - alias to range so all drivers can work.
 
 ## API
   - /api/v1/switchdb
