@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -320,6 +321,41 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			ms.writeLine(buf, s)
 			ms.writeLine(buf, "OK")
 			break
+		// TODO: find a memcached command to replace - range <prefix> [limit]
+		case cmd == "range":
+			if len(args) < 2 || len(args) > 3 {
+				ms.writeLine(buf, "ERROR")
+				protocolErrors.Inc(1)
+				break
+			}
+			limit := -1
+			if len(args) == 3 {
+				limit, err = strconv.Atoi(args[2])
+				if err != nil {
+					log.Error("RANGE: couldn't parse LIMIT")
+					limit = -1
+				}
+			}
+			v, err := vdb.Range([]byte(args[1]), limit)
+			if err != nil {
+				log.Error("RANGE: %s", err)
+				break
+			}
+			if v == nil {
+				getMisses.Inc(1)
+				continue
+			}
+			cmdGet.Inc(1)
+			for key, value := range v {
+				if noreply == false {
+					ms.writeLine(buf, fmt.Sprintf("VALUE %s 0 %d", key, len(value)))
+					ms.writeLine(buf, string(value))
+					getHits.Inc(1)
+				}
+			}
+			if noreply == false {
+				ms.writeLine(buf, "END")
+			}
 
 		default:
 			log.Error("NOT IMPLEMENTED: %s", args[0])

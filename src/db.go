@@ -161,6 +161,33 @@ func (be KVDBBackend) Get(key []byte) ([]byte, error) {
 }
 
 /*
+Range query by key prefix. If limit == -1 no limit is applyed. Take care
+*/
+func (be KVDBBackend) Range(key []byte, limit int) (map[string][]byte, error) {
+	ret := make(map[string][]byte)
+	ro := levigo.NewReadOptions()
+	be.dbMutex.RLock()
+	it := be.db.NewIterator(ro)
+	defer it.Close()
+	it.Seek(key)
+	l := 0
+	for it = it; it.Valid(); it.Next() {
+		ret[string(it.Key())] = it.Value()
+		l++
+		if limit >= 0 && limit == l {
+			break
+		}
+	}
+	err := it.GetError()
+	if err != nil {
+		be.dbMutex.RUnlock()
+		return nil, fmt.Errorf("Error iterating: %s", string(key))
+	}
+	be.dbMutex.RUnlock()
+	return ret, nil
+}
+
+/*
 Delete key, optional check to see if it exists.
 Returns deleted boolean and error
 */
