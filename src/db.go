@@ -8,43 +8,8 @@ import (
 )
 
 /*
-
-bucket design
-given bucket BUCKET:
-    - BUCKET:DATA is key/value data with denormalized data
-    - BUCKET:EXP pointer to expiration + creation time
-    - BUCKET:CAS cas to key
-    - BUCKET:FLAG key flags ?
-The quick search over existing key is done thru counting bloom filter
-
-Expiration ideas:
-Expiration worker keeps in memory list of next expirations (queue deletes to BUCKET:DATA + bloom filter almost realtime, the others when it can)
-crontab like expirator ?
-expiration cache before get ?
-
-Q: any gains by dividing buckets in files ?
-
+InternalValue is a tentative representation of memcached data
 */
-
-/* what to implement from memcached:
-https://github.com/memcached/memcached/blob/master/doc/protocol.txt
-- GET/SET/ADD/INCR/DECR/STAT
-- passthru flags
-- opaque cas ?
-- expiration ?
-*/
-
-/*
-The "standard protocol stuff" of memcached involves running a command against an "item". An item consists of:
-
-A key (arbitrary string up to 250 bytes in length. No space or newlines for ASCII mode)
-A 32bit "flag" value
-An expiration time, in seconds. Can be up to 30 days. After 30 days, is treated as a unix timestamp of an exact date.
-A 64bit "CAS" value, which is kept unique.
-Arbitrary data
-
-*/
-
 type InternalValue struct {
 	key        []byte
 	flags      int32
@@ -53,6 +18,10 @@ type InternalValue struct {
 	value      []byte
 }
 
+/*
+KVDBBackend is the KeyValue DB abstraction. Contains a Mutex to coordinate
+file changes
+*/
 type KVDBBackend struct {
 	filename string
 	db       *levigo.DB
@@ -61,6 +30,9 @@ type KVDBBackend struct {
 	dbMutex  sync.RWMutex
 }
 
+/*
+NewKVDBBackend receives a filename with path and creates a new Backend instance
+*/
 func NewKVDBBackend(filename string) (*KVDBBackend, error) {
 	var err error
 
@@ -81,62 +53,80 @@ func NewKVDBBackend(filename string) (*KVDBBackend, error) {
 	return &b, nil
 }
 
+/*
+Set the value for key
+*/
 func (be KVDBBackend) Set(key []byte, value []byte) error {
 	return be.Put(key, value, false, true)
 }
 
-// store data only if the server doesnt holds it yet
+/*
+Add value to key, store data only if the server doesnt holds it yet
+*/
 func (be KVDBBackend) Add(key []byte, value []byte) error {
 	return be.Put(key, value, false, false)
 }
 
-// store data only if the server already holds this key
+/*
+Replace value for key, store data only if the server already holds this key
+*/
 func (be KVDBBackend) Replace(key []byte, value []byte) error {
 	return be.Put(key, value, true, false)
 }
 
-// INCR data, yields error if the represented value doesnt maps to int. Starts from 0, no negative values
+/*
+Incr data, yields error if the represented value doesnt maps to int.
+Starts from 0, no negative values
+*/
 func (be KVDBBackend) Incr(key []byte, value uint) (int, error) {
 	return be.Increment(key, int(value), false)
 }
 
-// DECR data, yields error if the represented value doesnt maps to int. Stops at 0, no negative values
+/*
+Decr data, yields error if the represented value doesnt maps to int.
+Stops at 0, no negative values
+*/
 func (be KVDBBackend) Decr(key []byte, value uint) (int, error) {
 	return be.Increment(key, int(value)*-1, false)
 }
 
-// Generic get and set for incr/decr tx
-func (be KVDBBackend) Increment(key []byte, value int, create_if_not_exists bool) (int, error) {
+/*
+Increment - Generic get and set for incr/decr tx
+*/
+func (be KVDBBackend) Increment(key []byte, value int, createIfNotExists bool) (int, error) {
 	be.dbMutex.Lock()
 	v, err := be.db.Get(be.ro, key)
-	if create_if_not_exists == false {
+	if createIfNotExists == false {
 		if v == nil || err != nil {
 			be.dbMutex.Unlock()
-			return -1, fmt.Errorf("Key %s do not exists, create_if_not_exists set to false - %s", string(key), err)
+			return -1, fmt.Errorf("Key %s do not exists, createIfNotExists set to false - %s", string(key), err)
 		}
 	}
 	if v == nil {
 		err = be.db.Put(be.wo, key, []byte("0"))
 		be.dbMutex.Unlock()
 		return 0, nil
-	} else {
-		i, err := strconv.Atoi(string(v))
-		if err != nil {
-			be.dbMutex.Unlock()
-			return -1, fmt.Errorf("Data cannot be incr/decr for key %s - %s", string(key), string(v))
-		}
-		i = i + value
-		s := fmt.Sprintf("%d", i)
-		err = be.db.Put(be.wo, key, []byte(s))
-		if err != nil {
-			be.dbMutex.Unlock()
-			return -1, fmt.Errorf("Error key %s - %s", string(key), err)
-		}
-		be.dbMutex.Unlock()
-		return i, nil
 	}
+	i, err := strconv.Atoi(string(v))
+	if err != nil {
+		be.dbMutex.Unlock()
+		return -1, fmt.Errorf("Data cannot be incr/decr for key %s - %s", string(key), string(v))
+	}
+	i = i + value
+	s := fmt.Sprintf("%d", i)
+	err = be.db.Put(be.wo, key, []byte(s))
+	if err != nil {
+		be.dbMutex.Unlock()
+		return -1, fmt.Errorf("Error key %s - %s", string(key), err)
+	}
+	be.dbMutex.Unlock()
+	return i, nil
+
 }
 
+/*
+Put data checking if it should be replaced or exists. Generic method
+*/
 func (be KVDBBackend) Put(key []byte, value []byte, replace bool, passthru bool) error {
 	be.dbMutex.Lock()
 	if passthru == false {
@@ -159,6 +149,9 @@ func (be KVDBBackend) Put(key []byte, value []byte, replace bool, passthru bool)
 	return err
 }
 
+/*
+Get data for key
+*/
 func (be KVDBBackend) Get(key []byte) ([]byte, error) {
 	ro := levigo.NewReadOptions()
 	be.dbMutex.RLock()
@@ -167,10 +160,13 @@ func (be KVDBBackend) Get(key []byte) ([]byte, error) {
 	return v, err
 }
 
-// returns deleted, error
-func (be KVDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) {
+/*
+Delete key, optional check to see if it exists.
+Returns deleted boolean and error
+*/
+func (be KVDBBackend) Delete(key []byte, onlyIfExists bool) (bool, error) {
 	be.dbMutex.Lock()
-	if only_if_exists == true {
+	if onlyIfExists == true {
 		x, err := be.db.Get(be.ro, key)
 		if err != nil {
 			be.dbMutex.Unlock()
@@ -186,17 +182,33 @@ func (be KVDBBackend) Delete(key []byte, only_if_exists bool) (bool, error) {
 	return true, err
 }
 
+/*
+Close database
+*/
 func (be KVDBBackend) Close() {
 	be.db.Close()
 }
 
+/*
+Stats returns db statuses
+*/
 func (be KVDBBackend) Stats() string {
 	return be.db.PropertyValue("leveldb.stats")
 }
 
+/*
+GetDbPath returns the filesystem path for the database
+*/
 func (be KVDBBackend) GetDbPath() string {
 	return be.filename
 }
 
-func (be KVDBBackend) Flush() error       { return nil }
+/*
+Flush flushes all data from the database, not implemented
+*/
+func (be KVDBBackend) Flush() error { return nil }
+
+/*
+BucketStats implement statuses for db that used the bucket idea (boltdb)
+*/
 func (be KVDBBackend) BucketStats() error { return nil }

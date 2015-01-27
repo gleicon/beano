@@ -9,19 +9,31 @@ import (
 	"time"
 )
 
+/*
+MemcachedProtocolServer a protocol abstraction with db switching and ro mode
+*/
 type MemcachedProtocolServer struct {
 	readonly bool
 }
 
+/*
+NewMemcachedProtocolServer creates a new protocol parser
+*/
 func NewMemcachedProtocolServer(readonly bool) *MemcachedProtocolServer {
 	ms := MemcachedProtocolServer{readonly: readonly}
 	return &ms
 }
 
+/*
+ReadOnly changes server state to readonly(true) or rw (false)
+*/
 func (ms MemcachedProtocolServer) ReadOnly(readonly bool) {
 	ms.readonly = readonly
 }
 
+/*
+SwitchDB not implemented. For leveldb it's cheaper to create a new instance
+*/
 func (ms MemcachedProtocolServer) SwitchDB(newDB string) error {
 	return nil
 }
@@ -41,7 +53,7 @@ func (ms MemcachedProtocolServer) writeLine(buf *bufio.ReadWriter, s string) err
 	return err
 }
 
-func (ms MemcachedProtocolServer) check_ro(buf *bufio.ReadWriter) bool {
+func (ms MemcachedProtocolServer) checkRO(buf *bufio.ReadWriter) bool {
 	if ms.readonly {
 		ms.writeLine(buf, "ERROR")
 		readonlyErrors.Inc(1)
@@ -49,13 +61,16 @@ func (ms MemcachedProtocolServer) check_ro(buf *bufio.ReadWriter) bool {
 	return ms.readonly
 }
 
+/*
+Parse memcachedprotocol and bind it with a KVDBBackend ops
+*/
 func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 	totalThreads.Inc(1)
 	currThreads.Inc(1)
 	defer currThreads.Dec(1)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 10))
 	defer conn.Close()
-	start_t := time.Now()
+	startTime := time.Now()
 	for {
 		buf := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 		noreply := false
@@ -69,16 +84,16 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 		}
 
 		if line == nil {
-			if time.Now().Sub(start_t) > time.Second*3 {
+			if time.Now().Sub(startTime) > time.Second*3 {
 				conn.Close()
 				networkErrors.Inc(1)
 				log.Info("Closing idle connection after timeout")
 				return
-			} else {
-				continue
 			}
+			continue
+
 		} else {
-			start_t = time.Now()
+			startTime = time.Now()
 		}
 
 		if len(line) < 3 || err != nil {
@@ -129,7 +144,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			}
 
 		case cmd == "set":
-			if ms.check_ro(buf) {
+			if ms.checkRO(buf) {
 				break
 			}
 			if len(args) < 2 {
@@ -160,7 +175,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			break
 
 		case cmd == "replace":
-			if ms.check_ro(buf) {
+			if ms.checkRO(buf) {
 				break
 			}
 			if len(args) < 2 {
@@ -186,7 +201,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			break
 
 		case cmd == "add":
-			if ms.check_ro(buf) {
+			if ms.checkRO(buf) {
 				break
 			}
 			if len(args) < 2 {
@@ -232,7 +247,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			break
 
 		case cmd == "flush_all":
-			if ms.check_ro(buf) {
+			if ms.checkRO(buf) {
 				break
 			}
 			vdb.Flush()
@@ -249,7 +264,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			break
 
 		case cmd == "switchdb":
-			if ms.check_ro(buf) {
+			if ms.checkRO(buf) {
 				break
 			}
 			if len(args) < 2 || len(args) > 3 {
@@ -268,7 +283,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			break
 
 		case cmd == "delete":
-			if ms.check_ro(buf) {
+			if ms.checkRO(buf) {
 				break
 			}
 			if len(args) < 2 {
@@ -313,6 +328,6 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 			break
 
 		}
-		responseTiming.Update(time.Since(start_t))
+		responseTiming.Update(time.Since(startTime))
 	}
 }

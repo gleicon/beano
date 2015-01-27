@@ -60,11 +60,11 @@ func serve(ip string, port string, filename string) {
 				}
 				ms.ReadOnly(true)
 				log.Info("DB Switch from %s to %s", vdb.GetDbPath(), filename)
-				old_c := vdb
+				currenteVdb := vdb
 				time.Sleep(2 * time.Second)
 				vdb = loadDB(filename)
 				time.Sleep(2 * time.Second)
-				old_c.Close()
+				currenteVdb.Close()
 				log.Info("DB Switch from %s to %s done", vdb.GetDbPath(), filename)
 				ms.ReadOnly(false)
 			}
