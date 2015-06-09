@@ -2,21 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/jmhodges/levigo"
 	"strconv"
 	"sync"
-)
 
-/*
-InternalValue is a tentative representation of memcached data
-*/
-type InternalValue struct {
-	key        []byte
-	flags      int32
-	expiration int
-	cas        int64
-	value      []byte
-}
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/filter"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
+)
 
 /*
 KVDBBackend is the KeyValue DB abstraction. Contains a Mutex to coordinate
@@ -24,9 +17,9 @@ file changes
 */
 type KVDBBackend struct {
 	filename string
-	db       *levigo.DB
-	ro       *levigo.ReadOptions
-	wo       *levigo.WriteOptions
+	db       *leveldb.DB
+	ro       *opt.ReadOptions
+	wo       *opt.WriteOptions
 	dbMutex  sync.RWMutex
 }
 
@@ -36,21 +29,30 @@ NewKVDBBackend receives a filename with path and creates a new Backend instance
 func NewKVDBBackend(filename string) (*KVDBBackend, error) {
 	var err error
 
-	b := KVDBBackend{db: nil}
+	b := KVDBBackend{db: nil, ro: nil, wo: nil}
 	b.filename = filename
-	opts := levigo.NewOptions()
-	filter := levigo.NewBloomFilter(32)
-	opts.SetFilterPolicy(filter)
-	opts.SetCache(levigo.NewLRUCache(3 << 30))
-	opts.SetCreateIfMissing(true)
-	b.db, err = levigo.Open(filename, opts)
-	b.ro = levigo.NewReadOptions()
-	b.wo = levigo.NewWriteOptions()
+	opts := opt.Options{
+		Filter: filter.NewBloomFilter(32),
+	}
+
+	b.db, err = leveldb.OpenFile(filename, &opts)
+	b.ro = new(opt.ReadOptions)
+	b.wo = new(opt.WriteOptions)
 
 	if err != nil {
 		return nil, err
 	}
 	return &b, nil
+}
+
+func (be KVDBBackend) NormalizedGet(key []byte, ro *opt.ReadOptions) ([]byte, error) {
+	v, err := be.db.Get(key, be.ro)
+	// impedance mismatch w/ levigo: v should be nil, err should be nil for key not found
+	if err == leveldb.ErrNotFound {
+		err = nil
+		v = nil
+	}
+	return v, err
 }
 
 /*
@@ -95,7 +97,7 @@ Increment - Generic get and set for incr/decr tx
 */
 func (be KVDBBackend) Increment(key []byte, value int, createIfNotExists bool) (int, error) {
 	be.dbMutex.Lock()
-	v, err := be.db.Get(be.ro, key)
+	v, err := be.NormalizedGet(key, be.ro)
 	if createIfNotExists == false {
 		if v == nil || err != nil {
 			be.dbMutex.Unlock()
@@ -103,7 +105,7 @@ func (be KVDBBackend) Increment(key []byte, value int, createIfNotExists bool) (
 		}
 	}
 	if v == nil {
-		err = be.db.Put(be.wo, key, []byte("0"))
+		err = be.db.Put(key, []byte("0"), be.wo)
 		be.dbMutex.Unlock()
 		return 0, nil
 	}
@@ -114,7 +116,7 @@ func (be KVDBBackend) Increment(key []byte, value int, createIfNotExists bool) (
 	}
 	i = i + value
 	s := fmt.Sprintf("%d", i)
-	err = be.db.Put(be.wo, key, []byte(s))
+	err = be.db.Put(key, []byte(s), be.wo)
 	if err != nil {
 		be.dbMutex.Unlock()
 		return -1, fmt.Errorf("Error key %s - %s", string(key), err)
@@ -129,23 +131,24 @@ Put data checking if it should be replaced or exists. Generic method
 */
 func (be KVDBBackend) Put(key []byte, value []byte, replace bool, passthru bool) error {
 	be.dbMutex.Lock()
+	defer be.dbMutex.Unlock()
 	if passthru == false {
 		if replace == true {
-			v, err := be.db.Get(be.ro, key)
+			v, err := be.NormalizedGet(key, be.ro)
 			if v == nil || err != nil {
 				be.dbMutex.Unlock()
 				return fmt.Errorf("Key %s do not exists, replace set to true - %s", string(key), err)
 			}
 		} else {
-			v, err := be.db.Get(be.ro, key)
+			v, err := be.NormalizedGet(key, be.ro)
 			if v != nil {
 				be.dbMutex.Unlock()
 				return fmt.Errorf("Key %s exists, replace set to false - %s", string(key), err)
 			}
 		}
 	}
-	err := be.db.Put(be.wo, key, value)
-	be.dbMutex.Unlock()
+
+	err := be.db.Put(key, value, be.wo)
 	return err
 }
 
@@ -153,37 +156,52 @@ func (be KVDBBackend) Put(key []byte, value []byte, replace bool, passthru bool)
 Get data for key
 */
 func (be KVDBBackend) Get(key []byte) ([]byte, error) {
-	ro := levigo.NewReadOptions()
 	be.dbMutex.RLock()
-	v, err := be.db.Get(ro, key)
-	be.dbMutex.RUnlock()
+	defer be.dbMutex.RUnlock()
+	v, err := be.NormalizedGet(key, be.ro)
 	return v, err
 }
 
 /*
 Range query by key prefix. If limit == -1 no limit is applyed. Take care
 */
-func (be KVDBBackend) Range(key []byte, limit int) (map[string][]byte, error) {
-	ret := make(map[string][]byte)
-	ro := levigo.NewReadOptions()
+func (be KVDBBackend) Range(key []byte, limit int, from []byte, reverse bool) (map[string][]byte, error) {
 	be.dbMutex.RLock()
-	it := be.db.NewIterator(ro)
-	defer it.Close()
-	it.Seek(key)
-	l := 0
-	for it = it; it.Valid(); it.Next() {
-		ret[string(it.Key())] = it.Value()
-		l++
+	defer be.dbMutex.RUnlock()
+
+	var f func() bool
+	ret := make(map[string][]byte)
+
+	it := be.db.NewIterator(util.BytesPrefix(key), be.ro)
+
+	if reverse == true {
+		it.Last()
+	}
+
+	if from != nil {
+		it.Seek(from)
+	}
+
+	if reverse == true {
+		f = it.Prev
+	} else {
+		f = it.Next
+	}
+
+	for l := 1; f(); l++ {
+		k := string(it.Key())
+		ret[k] = make([]byte, len(it.Value()))
+		copy(ret[k], it.Value())
 		if limit >= 0 && limit == l {
 			break
 		}
 	}
-	err := it.GetError()
+
+	it.Release()
+	err := it.Error()
 	if err != nil {
-		be.dbMutex.RUnlock()
 		return nil, fmt.Errorf("Error iterating: %s", string(key))
 	}
-	be.dbMutex.RUnlock()
 	return ret, nil
 }
 
@@ -193,19 +211,18 @@ Returns deleted boolean and error
 */
 func (be KVDBBackend) Delete(key []byte, onlyIfExists bool) (bool, error) {
 	be.dbMutex.Lock()
+	defer be.dbMutex.Unlock()
+
 	if onlyIfExists == true {
-		x, err := be.db.Get(be.ro, key)
+		x, err := be.NormalizedGet(key, be.ro)
 		if err != nil {
-			be.dbMutex.Unlock()
 			return false, err
 		}
 		if x == nil {
-			be.dbMutex.Unlock()
 			return false, nil
 		}
 	}
-	err := be.db.Delete(be.wo, key)
-	be.dbMutex.Unlock()
+	err := be.db.Delete(key, be.wo)
 	return true, err
 }
 
@@ -220,7 +237,8 @@ func (be KVDBBackend) Close() {
 Stats returns db statuses
 */
 func (be KVDBBackend) Stats() string {
-	return be.db.PropertyValue("leveldb.stats")
+	s, _ := be.db.GetProperty("leveldb.stats")
+	return s
 }
 
 /*
