@@ -3,12 +3,14 @@
 ## Beano is a key value database 
 
   - speaks memcached ascii protocol
-  - persists to leveldb or boltdb(wip)
+  - persists to leveldb  or boltdb(branch only)
   - cache keys using bloomfilter (leveldb) or couting bloom filter (boltdb)
   - can switch databases on the fly
   - can be set readonly
   - metrics ridden (expvar and go-metrics)
   - range queries by key prefix
+  - uses goleveldb (new)
+  - fast !
 
 ## Build
   - Build locally with make
@@ -19,6 +21,8 @@
 
   - Use ansible to build in your VPS 
     - ansible-playbook -i hosts.ini golang.yml
+   
+  - mc-memcached is used more as concurrency benchmark than speed. Currently it gets near ~~20~~40k writes/sec
 
 ## Commands
   - any regular memcached client will do
@@ -50,8 +54,6 @@
 
 ## TODO
    - It already pass the basics of memcapable -a for set/get/replace. Incr and Decr are wip. 
-   - mc-memcached is used more as concurrency benchmark than speed. Currently it gets near 20k writes/sec
-   - I've been using levigo which is a nice library but cgo do not plays well with libraries that implement their own signal handling.
    - Better log configure (for now stats are dumped each 60 secs to log handler, not properly formatted)
 
 ## Nice to Have
