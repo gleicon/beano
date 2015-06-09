@@ -335,7 +335,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 					limit = -1
 				}
 			}
-			v, err := vdb.Range([]byte(args[1]), limit)
+			v, err := vdb.Range([]byte(args[1]), limit, nil, false)
 			if err != nil {
 				log.Error("RANGE: %s", err)
 				break

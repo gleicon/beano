@@ -43,7 +43,7 @@
 ## API
   - /api/v1/switchdb
     - changes database on the fly
-    - example: curl -d "filename=/tmp/memcached2.db" http://127.0.0.1:11211/api/v1/switchdb
+    - example: curl -d "filename=/tmp/memcached2.db" http://127.0.0.1:8080/api/v1/switchdb
 
   - /debug/vars
     - expvar json
