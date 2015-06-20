@@ -59,6 +59,10 @@
 ## Nice to Have
    - Pluggable backend (BoltDB plus memory)
    - Keep looking into the original memcached -E backend to see if it's worth porting back to C. I've started that a couple of years ago and it worked well (https://github.com/gleicon/leveldb_engine)
- 
+
+![github analytics](http://perfmetrics.co/api/track/github.com:beano/?t=u&type_navigate=navigate&host=https%253A%252F%252Fgithub.com%252Fgleicon%252F/beano)
+
 ## Licensing: MIT
+
+
 
