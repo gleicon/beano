@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/davecheney/profile"
-	logging "github.com/op/go-logging"
 	"os"
 	"runtime"
+
+	logging "github.com/op/go-logging"
+	"github.com/pkg/profile"
 )
 
 func setLogger() *logging.Logger {
@@ -40,8 +41,8 @@ func main() {
 	}
 	flag.Parse()
 	if *pf == true {
-		c := profile.Config{BlockProfile: true, CPUProfile: true, ProfilePath: "/tmp", MemProfile: true, Quiet: false}
-		defer profile.Start(&c).Stop()
+		c := profile.Start(profile.CPUProfile, profile.ProfilePath("/tmp"), profile.NoShutdownHook)
+		defer c.Stop()
 	}
 	var cpuinfo string
 	if n := runtime.NumCPU(); n > 1 {
