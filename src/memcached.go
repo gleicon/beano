@@ -63,9 +63,10 @@ func (ms MemcachedProtocolServer) checkRO(buf *bufio.ReadWriter) bool {
 }
 
 /*
-Parse memcachedprotocol and bind it with a KVDBBackend ops
+Parse memcachedprotocol and bind it with a DB Backend ops
 */
-func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
+//func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *LevelDBBackend) {
+func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb BackendDatabase) {
 	totalThreads.Inc(1)
 	currThreads.Inc(1)
 	defer currThreads.Dec(1)
@@ -79,7 +80,7 @@ func (ms MemcachedProtocolServer) Parse(conn net.Conn, vdb *KVDBBackend) {
 		if err != nil {
 			if err != io.EOF {
 				networkErrors.Inc(1)
-				log.Error("Connection closed: error %s\n", err)
+				log.Errorf("Connection closed: error %s\n", err)
 			}
 			return
 		}

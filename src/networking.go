@@ -9,8 +9,21 @@ import (
 
 var messages chan string
 
-func loadDB(filename string) *KVDBBackend {
-	vdb, err := NewKVDBBackend(filename)
+//func loadDB(filename string) *LevelDBBackend {
+func loadDB(backend string, filename string) BackendDatabase {
+	var vdb BackendDatabase
+	var err error
+	switch backend {
+	case "boltdb":
+		vdb, err = NewKVBoltDBBackend(filename, "memcached", 1000000)
+		break
+
+	default:
+	case "leveldb":
+		vdb, err = NewLevelDBBackend(filename)
+		break
+
+	}
 	if err != nil {
 		log.Error("Error opening db %s", err)
 		return nil
@@ -33,7 +46,7 @@ func switchDBHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func serve(ip string, port string, filename string) {
+func serve(ip string, port string, filename string, backend string) {
 	var err error
 	messages = make(chan string)
 
@@ -45,7 +58,7 @@ func serve(ip string, port string, filename string) {
 	listener, err := net.Listen("tcp", addr)
 	defer listener.Close()
 
-	vdb := loadDB(filename)
+	vdb := loadDB(backend, filename)
 	defer vdb.Close()
 
 	ms := NewMemcachedProtocolServer(false)
@@ -60,11 +73,11 @@ func serve(ip string, port string, filename string) {
 				}
 				ms.ReadOnly(true)
 				log.Info("DB Switch from %s to %s", vdb.GetDbPath(), filename)
-				currenteVdb := vdb
+				currentVdb := vdb
 				time.Sleep(2 * time.Second)
-				vdb = loadDB(filename)
+				vdb = loadDB(backend, filename)
 				time.Sleep(2 * time.Second)
-				currenteVdb.Close()
+				currentVdb.Close()
 				log.Info("DB Switch from %s to %s done", vdb.GetDbPath(), filename)
 				ms.ReadOnly(false)
 			}
