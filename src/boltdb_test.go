@@ -1,137 +1,109 @@
 package main
 
-import (
-	"fmt"
-	"math/rand"
-	"testing"
-	"time"
-)
+import "testing"
 
-var vdb *KVBoltDBBackend
-
-func init() {
-	vdb = NewKVBoltDBBackend("bolt.db", "memcached", 10000)
-	rand.Seed(time.Now().UTC().UnixNano())
-}
-
-func randomString(l int) string {
-	bytes := make([]byte, l)
-	for i := 0; i < l; i++ {
-		bytes[i] = byte(randInt(65, 90))
-	}
-	return string(bytes)
-}
-
-func randInt(min int, max int) int {
-	return min + rand.Intn(max-min)
-}
-
-func errUnexpected(msg interface{}) string {
-	return fmt.Sprintf("Unexpected response: %#v\n", msg)
-}
-
-func TestDelete(t *testing.T) {
+func TestBoltDBDelete(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Set(key, value)
-	vdb.Delete(key, false)
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Set(key, value)
+	vboltdb.Delete(key, false)
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v != nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestSet(t *testing.T) {
+func TestBoltDBSet(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key, false)
-	vdb.Set(key, value)
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Delete(key, false)
+	vboltdb.Set(key, value)
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v == nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestGet(t *testing.T) {
+func TestBoltDBGet(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key, false)
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Delete(key, false)
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v != nil {
 		t.Error(errUnexpected(v))
 	}
 
-	vdb.Set(key, value)
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Set(key, value)
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v == nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestAdd(t *testing.T) {
+func TestBoltDBAdd(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 
-	vdb.Add(key, value)
-	err := vdb.Add(key, value)
+	vboltdb.Add(key, value)
+	err := vboltdb.Add(key, value)
 	if err == nil {
 		t.Error(err)
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestReplace(t *testing.T) {
+func TestBoltDBReplace(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
 	newvalue := []byte("eric")
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 
-	vdb.Add(key, value)
-	vdb.Replace(key, newvalue)
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Add(key, value)
+	vboltdb.Replace(key, newvalue)
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if string(v) != "eric" {
 		t.Error(errUnexpected(string(v)))
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestIncr(t *testing.T) {
+func TestBoltDBIncr(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("10")
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 
-	vdb.Set(key, value)
-	v, err := vdb.Incr(key, 1)
+	vboltdb.Set(key, value)
+	v, err := vboltdb.Incr(key, 1)
 	if err != nil {
 		t.Error(err)
 	} else if v != 11 {
 		t.Error(errUnexpected(v))
 	}
 
-	if v, err := vdb.Get(key); err != nil {
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if string(v) != "11" {
 		t.Error(errUnexpected(string(v)))
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestDecr(t *testing.T) {
+func TestBoltDBDecr(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("10")
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 
-	vdb.Set(key, value)
-	v, err := vdb.Decr(key, 1)
+	vboltdb.Set(key, value)
+	v, err := vboltdb.Decr(key, 1)
 
 	if err != nil {
 		t.Error(err)
@@ -139,26 +111,26 @@ func TestDecr(t *testing.T) {
 		t.Error(errUnexpected(string(v)))
 	}
 
-	if v, err := vdb.Get(key); err != nil {
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if string(v) != "9" {
 		t.Error(errUnexpected(string(v)))
 	}
-	vdb.Delete(key, false)
+	vboltdb.Delete(key, false)
 }
 
-func TestFlush(t *testing.T) {
+func TestBoltDBFlush(t *testing.T) {
 	key := []byte("beano")
 	value := []byte("clapton")
-	vdb.Delete(key, false)
-	vdb.Set(key, value)
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Delete(key, false)
+	vboltdb.Set(key, value)
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v == nil {
 		t.Error(errUnexpected(v))
 	}
-	vdb.Flush()
-	if v, err := vdb.Get(key); err != nil {
+	vboltdb.Flush()
+	if v, err := vboltdb.Get(key); err != nil {
 		t.Error(err)
 	} else if v != nil {
 		t.Error(errUnexpected(v))

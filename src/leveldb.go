@@ -136,13 +136,11 @@ func (be LevelDBBackend) Put(key []byte, value []byte, replace bool, passthru bo
 		if replace == true {
 			v, err := be.NormalizedGet(key, be.ro)
 			if v == nil || err != nil {
-				be.dbMutex.Unlock()
 				return fmt.Errorf("Key %s do not exists, replace set to true - %s", string(key), err)
 			}
 		} else {
 			v, err := be.NormalizedGet(key, be.ro)
 			if v != nil {
-				be.dbMutex.Unlock()
 				return fmt.Errorf("Key %s exists, replace set to false - %s", string(key), err)
 			}
 		}
