@@ -3,14 +3,13 @@
 ## Beano is a key value database 
 
   - speaks memcached ascii protocol
-  - persists to leveldb  or boltdb(branch only)
-  - cache keys using bloomfilter (leveldb) or couting bloom filter (boltdb)
+  - persists to leveldbm bolddb or memory
+  - cache keys using bloomfilter (leveldb) or couting bloom filter (boltdb) to save I/O
   - can switch databases on the fly
   - can be set readonly
   - metrics ridden (expvar and go-metrics)
   - range queries by key prefix
-  - uses goleveldb (new)
-  - fast !
+  - uses goleveldb (native), boltdb and facebook's inmem
 
 ## Build
   - Build locally with make
@@ -22,7 +21,15 @@
   - Use ansible to build in your VPS 
     - ansible-playbook -i hosts.ini golang.yml
    
-  - mc-memcached is used more as concurrency benchmark than speed. Currently it gets near ~~20~~40k writes/sec
+  - mc-benchmark used more as concurrency benchmark than speed. Currently it gets near ~~20~~40k writes/sec
+
+## Running
+	$ beano [-s ip] [-p port] [-f /path/to/db/file -q -b leveldb|boltdb|inmem]")
+		- default ip: 127.0.0.1
+		- default port: 11211
+		- default backend: leveldb
+		- default db path+file: ./memcached.db
+		- (-q enables profiling to /tmp/*.prof")
 
 ## Commands
   - any regular memcached client will do
@@ -55,10 +62,6 @@
 ## TODO
    - It already pass the basics of memcapable -a for set/get/replace. Incr and Decr are wip. 
    - Better log configure (for now stats are dumped each 60 secs to log handler, not properly formatted)
-
-## Nice to Have
-   - Pluggable backend (BoltDB plus memory)
-   - Keep looking into the original memcached -E backend to see if it's worth porting back to C. I've started that a couple of years ago and it worked well (https://github.com/gleicon/leveldb_engine)
 
 ![github analytics](http://perfmetrics.co/api/track/github.com:beano/?t=u&type_navigate=navigate&host=https%253A%252F%252Fgithub.com%252Fgleicon%252F/beano)
 
