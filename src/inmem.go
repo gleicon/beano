@@ -64,6 +64,7 @@ func (be InmemBackend) Replace(key []byte, value []byte) error {
 Incr data, yields error if the represented value doesnt maps to int.
 Starts from 0, no negative values
 */
+
 func (be InmemBackend) Incr(key []byte, value uint) (int, error) {
 	return be.Increment(key, int(value), false)
 }
@@ -79,13 +80,15 @@ func (be InmemBackend) Decr(key []byte, value uint) (int, error) {
 /*
 Increment - Generic get and set for incr/decr tx
 */
+
 func (be InmemBackend) Increment(key []byte, incrValue int, createIfNotExists bool) (int, error) {
 	be.memMutex.Lock()
 	defer be.memMutex.Unlock()
+
 	var value interface{}
 	var found bool
 
-	if createIfNotExists == false {
+	if !createIfNotExists {
 		if value, found = be.cache.Get(key); !found {
 			return -1, fmt.Errorf("Key %s do not exists, createIfNotExists set to false", string(key))
 		}
@@ -151,3 +154,10 @@ func (be InmemBackend) Flush() error { return nil }
 BucketStats implement statuses for db that used the bucket idea (boltdb)
 */
 func (be InmemBackend) BucketStats() error { return nil }
+
+func (be InmemBackend) SwitchBucket(bucket string) {}
+func (be InmemBackend) Close()                     {}
+
+func (be InmemBackend) Range(key []byte, limit int, from []byte, reverse bool) (map[string][]byte, error) {
+	return nil, nil
+}
