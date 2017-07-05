@@ -21,6 +21,10 @@ func loadDB(backend string, filename string) BackendDatabase {
 		vdb, err = NewBadgerBackend(filename)
 		break
 
+	case "inmem":
+		vdb, err = NewInmemBackend(1000000)
+		break
+
 	default:
 	case "leveldb":
 		vdb, err = NewLevelDBBackend(filename)
