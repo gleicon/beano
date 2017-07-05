@@ -6,7 +6,7 @@ deps:
 	go get -v
 
 server:
-	go build -v -o $(NAME) -ldflags "-X main.VERSION $(VERSION)"
+	go build -v -o $(NAME) 
 
 clean:
 	rm -f $(NAME)
