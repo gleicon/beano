@@ -3,163 +3,101 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"sync"
 	"time"
 
 	"github.com/facebookgo/inmem"
 )
 
 type InmemBackend struct {
-	cache             inmem.Cache
-	memMutex          sync.RWMutex
-	cacheSize         int
-	defaultExpiration time.Time
+	size int
+	data inmem.Cache
 }
 
-/*
-	NewInmemBackend receives a size parameter and creates a new Facebook inmem Backend instance
-*/
 func NewInmemBackend(size int) (*InmemBackend, error) {
-
-	b := InmemBackend{cache: nil, cacheSize: size}
-	b.cache = inmem.NewLocked(size)
-	// 24h default expiration time
-	b.defaultExpiration = time.Now().Add(24 * time.Hour)
+	dd := inmem.NewLocked(size)
+	b := InmemBackend{size: size, data: dd}
 	return &b, nil
 }
 
-/*
-	Set the value for key
-*/
 func (be InmemBackend) Set(key []byte, value []byte) error {
-	be.cache.Add(key, value, be.defaultExpiration)
-	return nil
+	return be.Put(key, value, false, true)
 }
 
-/*
-	Add value to key, store data only if the server doesnt holds it yet
-*/
+// store data only if the server doesnt holds it yet
 func (be InmemBackend) Add(key []byte, value []byte) error {
-	if _, found := be.cache.Get(key); found {
-		return errors.New("Key already exists")
-	}
-	be.cache.Add(key, value, be.defaultExpiration)
-	return nil
+	return be.Put(key, value, false, false)
 }
 
-/*
-	Replace value for key, store data only if the server already holds this key
-*/
+// store data only if the server already holds this key
 func (be InmemBackend) Replace(key []byte, value []byte) error {
-	if _, found := be.cache.Get(key); !found {
-		return errors.New("Key do not exists")
-	}
-	be.cache.Add(key, value, be.defaultExpiration)
-	return nil
+	return be.Put(key, value, true, false)
 }
 
 /*
-	Incr data, yields error if the represented value doesnt maps to int.
-	Starts from 0, no negative values
+Incr data, yields error if the represented value doesnt maps to int.
+Starts from 0, no negative values
 */
-
 func (be InmemBackend) Incr(key []byte, value uint) (int, error) {
 	return be.Increment(key, int(value), false)
 }
 
 /*
-   Decr data, yields error if the represented value doesnt maps to int.
-   Stops at 0, no negative values
+Decr data, yields error if the represented value doesnt maps to int.
+Stops at 0, no negative values
 */
 func (be InmemBackend) Decr(key []byte, value uint) (int, error) {
 	return be.Increment(key, int(value)*-1, false)
 }
 
-/*
-	Increment - Generic get and set for incr/decr tx
-*/
-
-func (be InmemBackend) Increment(key []byte, incrValue int, createIfNotExists bool) (int, error) {
-	be.memMutex.Lock()
-	defer be.memMutex.Unlock()
-
-	var value interface{}
-	var found bool
-
-	if !createIfNotExists {
-		if value, found = be.cache.Get(key); !found {
-			return -1, fmt.Errorf("Key %s do not exists, createIfNotExists set to false", string(key))
-		}
-	}
-
-	if value == nil {
-		be.cache.Add(key, []byte("0"), be.defaultExpiration)
-		return 0, nil
-	}
-	i, err := strconv.Atoi(value.(string))
-	if err != nil {
-		return -1, fmt.Errorf("Data cannot be incr/decr for key %s - %s", string(key), value.(string))
-	}
-	i = i + incrValue
-	s := fmt.Sprintf("%d", i)
-	be.cache.Add(key, []byte(s), be.defaultExpiration)
-	return i, nil
-
+// Generic get and set for incr/decr tx
+func (be InmemBackend) Increment(key []byte, value int, create_if_not_exists bool) (int, error) {
+	return 0, nil
 }
 
-/*
-	Get data for key
-*/
+func (be InmemBackend) Put(key []byte, value []byte, replace bool, passthru bool) error {
+	be.data.Add(string(key), value, time.Now())
+	return nil
+}
+
 func (be InmemBackend) Get(key []byte) ([]byte, error) {
-	v, _ := be.cache.Get(key)
-	return v.([]byte), nil
+	r, ok := be.data.Get(string(key))
+	if !ok {
+		return nil, errors.New("Error getting value from inmem")
+	}
+	return r.([]byte), nil
 }
 
-/*
-	Delete key, optional check to see if it exists.
-	Returns deleted boolean and error
-*/
-func (be InmemBackend) Delete(key []byte, onlyIfExists bool) (bool, error) {
-	if onlyIfExists == true {
-		if _, found := be.cache.Get(key); !found {
-			return false, errors.New("Key do not exists")
+// returns deleted, error
+func (be InmemBackend) Delete(key []byte, only_if_exists bool) (bool, error) {
+	if only_if_exists == true {
+		x, err := be.Get(key)
+		if err != nil {
+			return false, err
+		}
+		if x == nil {
+			return false, nil
 		}
 	}
-	be.cache.Remove(key)
+	be.data.Remove(key)
 	return true, nil
 }
 
-/*
-   Stats returns db statuses
-*/
-func (be InmemBackend) Stats() string {
-	return ""
-}
-
-/*
-	GetDbPath returns the filesystem path for the database
-*/
-func (be InmemBackend) GetDbPath() string {
-	return ""
-}
-
-/*
-   Flush flushes all data from the database, not implemented
-*/
-func (be InmemBackend) Flush() error { return nil }
-
-/*
-   BucketStats implement statuses for db that used the bucket idea (boltdb)
-*/
-func (be InmemBackend) BucketStats() error { return nil }
-
-func (be InmemBackend) SwitchBucket(bucket string) {}
-func (be InmemBackend) Close()                     {}
-
-func (be InmemBackend) Range(key []byte, limit int, from []byte, reverse bool) (map[string][]byte, error) {
-	return nil, nil
-}
-func (be InmemBackend) Put([]byte, []byte, bool, bool) error {
+func (be InmemBackend) Flush() error {
 	return nil
 }
+
+func (be InmemBackend) BucketStats() error {
+	return nil
+}
+
+func (be InmemBackend) GetDbPath() string {
+	rm := fmt.Sprintf("Inmem database: %d bytes", be.data.Len())
+	return rm
+}
+
+func (be InmemBackend) SwitchBucket(bucket string) {}
+func (be InmemBackend) Range([]byte, int, []byte, bool) (map[string][]byte, error) {
+	return nil, nil
+}
+func (be InmemBackend) Close()        {}
+func (be InmemBackend) Stats() string { return "" }
