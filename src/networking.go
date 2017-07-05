@@ -9,13 +9,16 @@ import (
 
 var messages chan string
 
-//func loadDB(filename string) *LevelDBBackend {
 func loadDB(backend string, filename string) BackendDatabase {
 	var vdb BackendDatabase
 	var err error
 	switch backend {
 	case "boltdb":
 		vdb, err = NewKVBoltDBBackend(filename, "memcached", 1000000)
+		break
+
+	case "badger":
+		vdb, err = NewBadgerBackend(filename)
 		break
 
 	default:

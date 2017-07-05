@@ -25,12 +25,13 @@ var log = setLogger()
 func main() {
 	address := flag.String("s", "127.0.0.1", "Bind Address")
 	port := flag.String("p", "11211", "Bind Port")
-	filename := flag.String("f", "./memcached.db", "path and file for database")
-	backend := flag.String("b", "leveldb", "backend: leveldb, boltdb or inmem")
+	filename := flag.String("f", "./memcached.db", "path and file for database. for badger it needs to be a directory")
+	backend := flag.String("b", "leveldb", "backend: leveldb, boltdb, inmem or badger")
 	pf := flag.Bool("q", false, "Enable profiling")
+	dumpLogs := flag.Bool("m", false, "Enable metric dump each 60 seconds")
 
 	flag.Usage = func() {
-		fmt.Println("Usage: beano [-s ip] [-p port] [-f /path/to/db/file -q -b leveldb|boltdb|inmem]")
+		fmt.Println("Usage: beano [-s ip] [-p port] [-f /path/to/db/file -q -b leveldb|boltdb|inmem|badger]")
 		fmt.Println("default ip: 127.0.0.1")
 		fmt.Println("default port: 11211")
 		fmt.Println("default backend: leveldb")
@@ -44,9 +45,9 @@ func main() {
 		defer c.Stop()
 	}
 
-	log.Infof("Beano backend: %s | db file: %s", *backend, *filename)
+	log.Info("Beano backend: %s | db file: %s", *backend, *filename)
 
-	initializeMetrics(*filename)
+	initializeMetrics(*filename, *dumpLogs)
 
 	serve(*address, *port, *filename, *backend)
 

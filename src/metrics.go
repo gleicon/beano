@@ -3,10 +3,11 @@ package main
 import (
 	"expvar"
 	"fmt"
-	logging "github.com/op/go-logging"
-	"github.com/rcrowley/go-metrics"
 	"os"
 	"time"
+
+	logging "github.com/op/go-logging"
+	"github.com/rcrowley/go-metrics"
 )
 
 var pid = expvar.NewInt("pid")
@@ -28,7 +29,7 @@ var networkErrors = metrics.NewCounter()    //"network_errors"
 var readonlyErrors = metrics.NewCounter()   //"readonly_errors"
 var responseTiming = metrics.NewTimer()     // response_timing
 
-func initializeMetrics(dbp string) {
+func initializeMetrics(dbp string, dumpLogs bool) {
 	pid.Set(int64(os.Getpid()))
 	version.Set("BEANO Server")
 	upSince.Set(time.Now().Format(time.RFC3339))
@@ -47,7 +48,9 @@ func initializeMetrics(dbp string) {
 	metrics.Register("network_errors", networkErrors)
 	metrics.Register("readonly_errors", readonlyErrors)
 	metrics.Register("response_timing", responseTiming)
-	go metrics.Log(metrics.DefaultRegistry, time.Duration(60*time.Second), logging.NewLogBackend(os.Stdout, "", 0).Logger)
+	if dumpLogs {
+		go metrics.Log(metrics.DefaultRegistry, time.Duration(60*time.Second), logging.NewLogBackend(os.Stdout, "", 0).Logger)
+	}
 }
 
 func metrics2expvar(r metrics.Registry) {

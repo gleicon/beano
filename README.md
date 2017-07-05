@@ -3,13 +3,12 @@
 ## Beano is a key value database 
 
   - speaks memcached ascii protocol
-  - persists to leveldbm bolddb or memory
+  - persists to leveldb (native golang impl), boltdb, badger or memory
   - cache keys using bloomfilter (leveldb) or couting bloom filter (boltdb) to save I/O
   - can switch databases on the fly
   - can be set readonly
   - metrics ridden (expvar and go-metrics)
   - range queries by key prefix
-  - uses goleveldb (native), boltdb and facebook's inmem
 
 ## Build
   - Build locally with make
