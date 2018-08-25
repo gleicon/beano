@@ -1,0 +1,73 @@
+go-bloom is a collection of bloom filters for Go, including a standard bloom
+filter, a counting bloom filter, and a layered bloom filter (for counting
+occurrences of the same item.) All of them use the 64-bit FNV-1 hash function
+and an efficient bitset.
+
+A bloom filter is a space-efficient probabilistic data structure that is used
+to test whether an element is a member of a set. False positives are possible,
+but false negatives are not; i.e. a query returns either "inside set (may be
+wrong)" or "definitely not in set". Elements can be added to the set, but not
+removed (though this can be addressed with a counting filter.)
+
+== Installation
+
+go get github.com/pmylund/go-bloom
+
+== Documentation
+
+go doc github.com/pmylund/go-bloom
+or http://go.pkgdoc.org/github.com/pmylund/go-bloom
+
+== Usage
+
+import "github.com/pmylund/go-bloom"
+
+// Normal bloom filter
+
+// Create a bloom filter which will contain an expected 100,000 items, and which
+// allows a false positive rate of 1%.
+f := bloom.New(100000, 0.01)
+
+// Add an item to the filter
+f.Add([]byte("foo"))
+
+// Check if an item has been added to the filter (if true, subject to the
+// false positive chance; if false, then the item definitely has not been
+// added to the filter.)
+f.Test([]byte("foo"))
+
+
+// Counting bloom filter
+
+// Create a counting bloom filter which will contain an expected 100,000 items,
+// and which allows a false positive rate of 1%.
+f := bloom.NewCounting(100000, 0.01)
+
+// Add an item to the counting filter
+f.Add([]byte("foo"))
+
+// Remove an item from the counting filter
+f.Remove([]byte("foo"))
+
+
+// Layered bloom filter
+
+// Create a layered bloom filter which will contain an expected 100,000 items,
+// and which allows a false positive rate of 1%.
+f := bloom.NewLayered(100000, 0.01)
+
+// Add an item to the layered filter
+f.Add([]byte("foo"))
+
+// Add an item to the layered filter again
+f.Add([]byte("foo"))
+
+// Find out how many times an item appears in the layered filter
+count := f.Test([]byte("foo")
+count == 2
+
+To use go-bloom in multiple goroutines, use a sync.RWMutex, and surround test
+calls with RLock()/RUnlock(), and set calls with Lock()/()Unlock.
+
+
+go-bloom is based on bloom by Will Fitzgerald.

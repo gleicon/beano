@@ -20,7 +20,7 @@ type LevelDBBackend struct {
 	db       *leveldb.DB
 	ro       *opt.ReadOptions
 	wo       *opt.WriteOptions
-	dbMutex  sync.RWMutex
+	dbMutex  *sync.RWMutex
 }
 
 /*

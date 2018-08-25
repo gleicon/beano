@@ -3,7 +3,7 @@ include Makefile.defs
 all: deps server
 
 deps:
-	go get -v
+	dep ensure
 
 server:
 	go build -v -o $(NAME) 
