@@ -38,6 +38,7 @@ func NewLevelDBBackend(filename string) (*LevelDBBackend, error) {
 	b.db, err = leveldb.OpenFile(filename, &opts)
 	b.ro = new(opt.ReadOptions)
 	b.wo = new(opt.WriteOptions)
+	b.dbMutex = &sync.RWMutex{}
 
 	if err != nil {
 		return nil, err

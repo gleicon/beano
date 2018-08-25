@@ -15,7 +15,7 @@ type BloomFilterKeys struct {
 }
 
 func NewBloomFilterKeys(maxKeysPerBucket int) *BloomFilterKeys {
-	me := BloomFilterKeys{cache: nil}
+	me := BloomFilterKeys{cache: nil, bloomLock: &sync.RWMutex{}}
 	me.cache = bloom.NewCounting(maxKeysPerBucket, 0.01)
 	return &me
 }

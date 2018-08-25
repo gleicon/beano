@@ -1,9 +1,7 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"sync"
 
@@ -24,19 +22,11 @@ type badgerBackend struct {
 NewbadgerBackend receives a dirname with path and creates a new Backend instance
 */
 func NewBadgerBackend(dirname string) (*badgerBackend, error) {
-	var err error
-	info, err := os.Stat(dirname)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() {
-		return nil, errors.New("Directory not found" + err.Error())
-	}
 	opt := badger.DefaultOptions
 	opt.Dir = dirname
 	opt.ValueDir = dirname
 	kv, _ := badger.Open(opt)
-	b := badgerBackend{db: kv, dirname: dirname}
+	b := badgerBackend{db: kv, dirname: dirname, dbMutex: &sync.RWMutex{}}
 	return &b, nil
 }
 
@@ -102,12 +92,12 @@ func (be badgerBackend) Increment(key []byte, value int, createIfNotExists bool)
 
 	item, err := txn.Get(key)
 
-	if err == badger.ErrKeyNotFound && createIfNotExists == false {
-		return -1, fmt.Errorf("Key %s do not exists, createIfNotExists set to false - %s", string(key), err)
-	}
-
 	if err != nil {
-		return 0, err
+		if err == badger.ErrKeyNotFound && createIfNotExists == false {
+			return -1, fmt.Errorf("Key %s do not exists, createIfNotExists set to false - %s", string(key), err)
+		} else {
+			return 0, err
+		}
 	}
 
 	itemValue, err := item.Value()
@@ -147,13 +137,14 @@ func (be badgerBackend) Put(key []byte, value []byte, replace bool, passthru boo
 		keyExists := true
 
 		_, err := txn.Get(key)
-		if err == badger.ErrKeyNotFound {
-			keyExists = false
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				keyExists = false
+			} else {
+				return err
+			}
 		}
 
-		if err != nil {
-			return err
-		}
 		if passthru == false {
 			if replace == true {
 				if !keyExists {
@@ -234,13 +225,14 @@ func (be badgerBackend) Delete(key []byte, onlyIfExists bool) (bool, error) {
 		if onlyIfExists == true {
 			keyExists := true
 			_, err := txn.Get(key)
-			if err == badger.ErrKeyNotFound {
-				keyExists = false
+			if err != nil {
+				if err == badger.ErrKeyNotFound {
+					keyExists = false
+				} else {
+					return err
+				}
 			}
 
-			if err != nil {
-				return err
-			}
 			if !keyExists {
 				return fmt.Errorf("DELETE: key %s doesn't exist", key)
 			}
