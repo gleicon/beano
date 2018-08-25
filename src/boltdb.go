@@ -11,7 +11,7 @@ import (
 
 type BloomFilterKeys struct {
 	cache     *bloom.CountingFilter
-	bloomLock sync.RWMutex
+	bloomLock *sync.RWMutex
 }
 
 func NewBloomFilterKeys(maxKeysPerBucket int) *BloomFilterKeys {
@@ -129,7 +129,7 @@ func (be KVBoltDBBackend) Increment(key []byte, value int, create_if_not_exists 
 			i := string(0 + value)
 			err := bucket.Put(key, []byte(i))
 			if err != nil {
-				return fmt.Errorf("Error storing incr/decr value for key %s - %d", string(key), i)
+				return fmt.Errorf("Error storing incr/decr value for key %s - %s", string(key), i)
 			}
 			ret = 0 + value
 		} else {
