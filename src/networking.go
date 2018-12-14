@@ -15,21 +15,14 @@ func loadDB(backend string, filename string) BackendDatabase {
 	switch backend {
 	case "boltdb":
 		vdb, err = NewKVBoltDBBackend(filename, "memcached", 1000000)
-		break
-
 	case "badger":
 		vdb, err = NewBadgerBackend(filename)
-		break
-
 	case "inmem":
 		vdb, err = NewInmemBackend(1000000)
-		break
-
 	default:
+		fallthrough
 	case "leveldb":
 		vdb, err = NewLevelDBBackend(filename)
-		break
-
 	}
 	if err != nil {
 		log.Error("Error opening db %s", err)
